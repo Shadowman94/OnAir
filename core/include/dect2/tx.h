@@ -21,7 +21,7 @@
 // Every offered mode has a payload UI (callsign / text / IDs / file / mic as it fits). Empty fields fall back to the demo signal.
 // Imagery / scene generators that cannot carry a typed string (DAB, ISDB-T, DVB-S, satellite pictures, …) send analog NFM of the mic/file
 // when that box is checked; otherwise they keep the demo.
-// Carrier tune (every mode): an unmodulated carrier at DC for setting drive / SWR; independent of the payload, not saved as transmitting.
+// Carrier tune (every mode): an unmodulated carrier at the signal offset (at DC when that offset is 0) for setting drive / SWR; independent of the payload, not saved as transmitting.
 //   (see txModes() for the complete rows)
 //
 // NOT OFFERED, and why (txRefusalReason): cellular (LTE / GSM-R / 5G NR / NB-IoT: cell-model for the decoder), GNSS (spoofing),
@@ -103,6 +103,7 @@ struct TxRequest {
     std::string modeId;
     SynthConfig synth;
     double bandwidthMhz = 8;       // DVB-T2 / DVB-T channel width
+    double rateHz = 0;             // 0: the mode's own sample rate. Otherwise the rate asked of the radio, the same for every mode
     TxTune tune;                   // frequency, gain, ... (sampleRate is chosen by the session)
     bool loop = true;              // true: until stopped; false: one pass of onceSeconds, then it stops by itself
     double onceSeconds = 10;
@@ -128,7 +129,7 @@ struct TxRequest {
     double toneHz = 1000;          // analog test tone
     double lat = 0, lon = 0;       // AIS / APRS position
     bool reverse = false;          // RTTY: mark is the upper tone
-    bool carrierTune = false;      // unmodulated carrier at DC (IF centre); payload generator is bypassed. Not persisted.
+    bool carrierTune = false;      // unmodulated carrier at the signal offset (DC when that is 0); payload generator is bypassed. Not persisted.
     int audioSrc = 2;              // 0 microphone, 1 file (WAV/MP3), 2 1 kHz tone, 3 silence. Mic is opened only when transmitting.
     std::string audioDevice;       // empty = default input
     bool audioMute = false;
@@ -165,7 +166,7 @@ struct TxRateLimits { double minHz = 0, maxHz = 0; };
 // at that rate or the options are invalid. The synthetic-signal impairments of r.synth are turned off. Empty payload fields fall back to the mode's demo signal.
 std::unique_ptr<TxGenerator> makeTxGenerator(const TxModeSpec& mode, const TxRequest& r, double rateHz, std::string& err);
 
-// The sample rate to ask the radio for: the mode's own, kept within the radio's limits
+// The sample rate to ask the radio for. rateHz set: that rate. Otherwise the mode's own. Either way, kept within the radio's limits.
 double txRequestRate(const TxModeSpec& mode, const TxRequest& r, const TxRateLimits& lim);
 
 // The transmitter's radio. It is independent of the receivers: a radio a receiver (Engine) has open is refused here, in plain words, unless it is
@@ -186,15 +187,21 @@ public:
     bool start(std::unique_ptr<TxSink> sink, const TxRequest& r, const TxRateLimits& lim, std::string& err);
     void stop();                       // stops sending and closes the radio; no sample goes out after it returns. Safe to call twice.
     bool running() const { return running_; }   // sending now (false once a one-pass transmission has ended or the radio failed)
-    // Unmodulated carrier at DC, independent of the payload. While on, generate() is CW of amplitude 1.0. Not persisted. Stop still applies.
+    // Unmodulated carrier at the signal offset (DC when that is 0), independent of the payload. While on, generate() is CW of amplitude 1.0
+    // before that shift. Not persisted. Stop still applies.
     void setCarrierTune(bool on);
     bool carrierTune() const { return carrierTune_.load(); }
     struct Stats { uint64_t samples = 0; uint64_t underruns = 0; double seconds = 0; double rateHz = 0; bool failed = false; bool finished = false; bool carrierTune = false; float audioPeak = 0; std::string error; std::string fileNote; };
     Stats stats() const;
     std::vector<std::string> log() const;          // what was sent and what happened, oldest first, each with the time
     void setLogCallback(std::function<void(const std::string&)> f) { std::lock_guard<std::mutex> lk(mu_); cb_ = std::move(f); }
-    // A copy of the last ~0.5 s of IQ actually handed to the radio (generator output, including carrier tune). Empty when idle.
+    // A copy of the IQ the spectrum is watching (generator output, including carrier tune). Empty when idle.
+    // Until setSpectrumTap() is called this is the last ~0.5 s. After it, one 2048-sample window.
     void copyTap(std::vector<cf32>& out, double& rateHz) const;
+    // The spectrum display. Off: the generator copies no IQ (the last window stays). On: it copies one 2048-sample
+    // window only after armSpectrumTap(), then waits to be armed again. The transmission itself is unchanged.
+    void setSpectrumTap(bool on);
+    void armSpectrumTap();
 
 private:
     void generatorLoop();
@@ -224,6 +231,8 @@ private:
     bool started_ = false;
     std::vector<cf32> tap_;
     size_t tapPos_ = 0, tapHave_ = 0;
+    std::atomic<int> tapMode_{0};    // 0: the long ring (until the panel asks), 1: one window when armed, 2: copy nothing
+    std::atomic<bool> tapArm_{false};
 };
 
 } // namespace dect2

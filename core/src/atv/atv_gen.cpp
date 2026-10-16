@@ -69,7 +69,7 @@ struct AtvGenerator::Impl {
     AtvGenConfig cfg;
     AtvFormat fmt;
     bool ok = false;
-    double kFi = kFi0;               // internal rate: 12 Msps, 24 Msps for system E
+    double kFi = kFi0;               // internal rate: 12 Msps, or 10/16/20 when asked, 24 Msps for system E
     std::unique_ptr<AtvCard> card;
     std::function<void(const float*, size_t)> tap;
 
@@ -107,22 +107,47 @@ struct AtvGenerator::Impl {
     double pos = 64, step = 1;
     uint64_t outCount = 0;
 
-    // SECAM chrominance (625 lines only): FM at baseband around the centre of the bell, anti-bell filter, up to 12 Msps, mixed up
+    // SECAM chrominance (625 lines only): FM at baseband around the centre of the bell, anti-bell filter, up to the internal rate, mixed up.
+    // At 12 Msps the step is an exact 3, done as three polyphase branches. Any other internal rate uses the same windowed-sinc kernel as the output resampler.
     std::vector<float> secGR, secGI;                 // anti-bell at 4 Msps, taps reversed (a correlation)
     std::vector<float> secPoly[3];                   // interpolation 4 -> 12 Msps (gain 3), the three polyphase branches
     int secMu = 0, secS = 0, secPad = 0;
+    bool secFrac = false;                            // not 12 Msps: fractional interpolation of the 4 Msps chrominance
+    int64_t secBellNum = 4286, secBellDen = 12000;   // bell / internal rate, reduced; at 12 Msps this stays 4286/12000
     double secPhase = 0;                             // FM phase at baseband (radians), continuous from line to line
     std::vector<float> secC0R, secC0I, secC1R, secC1I;
 
     // sound, ghost, noise
     Programme prog;
     double sndPh = 0;                                // the sound carrier phase, radians (a running sum, reduced only where it is used)
+    double sndPh2 = 0;                               // the A2 second carrier, the same way
     std::vector<float> sPh, sAm;
-    std::vector<double> sPhD;
+    std::vector<double> sPhD, sR;
     uint64_t audioBlock = ~0ull;
     double audioA0 = 0, audioA1 = 0, audioDt = 0;
-    std::vector<float> livePcm;
+    double audioR0 = 0, audioR1 = 0;                 // the right channel, on the same 32-sample grid, when A2 is on
+    std::vector<float> livePcm, liveL, liveR;
     size_t livePos = 0;
+    // B/G (5.5 MHz) and D/K (6.5 MHz): the two-carrier stereo of ITU-R BS.707. AM sound and the other spacings stay mono.
+    bool a2On() const {
+        if (!cfg.stereo || fmt.amSound) return false;
+        const double s = std::fabs(fmt.soundSpacingMhz);
+        return (s > 5.4 && s < 5.6) || (s > 6.4 && s < 6.6);
+    }
+    void liveLR(double t, double& L, double& R) {
+        if (!cfg.pullAudio) { const double a = prog.at(t); L = R = a; return; }
+        constexpr double sr = 48000.0;
+        const size_t want = (size_t)std::max(1.0, t * sr) + 8;
+        float st[128];
+        while (liveL.size() < want) {
+            const int n = cfg.pullAudio(st, 64);
+            if (n <= 0) { liveL.push_back(0.f); liveR.push_back(0.f); break; }
+            for (int i = 0; i < n; i++) { liveL.push_back(st[2 * i]); liveR.push_back(st[2 * i + 1]); }
+        }
+        const size_t i = std::min(liveL.size() - 1, (size_t)std::max(0.0, t * sr));
+        const double g = prog.gain(3000.0);
+        L = (double)liveL[i] * g; R = (double)liveR[i] * g;
+    }
     double liveAt(double t) {
         if (!cfg.pullAudio) return prog.at(t);
         constexpr double sr = 48000.0;
@@ -148,12 +173,20 @@ struct AtvGenerator::Impl {
         if (c.rate < 1e6 || c.rate > 64e6) return;
         if (!c.setup && fmt.setup > 0) fmt.setup = 0;
         if (!c.groupDelay) fmt.chromaDelayNs = 0;
+        // 10, 16 and 20 Msps keep a 625-line at 640, 1024 and 1280 samples. 16 and 20 hold the full 5-6 MHz video; 10 limits it to 4.5.
+        // Matching the radio rate makes the output interpolator a pure delay, so it adds no images. System E needs 10 MHz of video, so it stays at 24.
         if (fmt.sys == kAtvE) kFi = 2 * kFi0;
-        // exact line length in internal samples: 64 us * 12 MHz = 768, 286 / 4.5 MHz * 12 MHz = 2288 / 3; 405 and 819 lines (25 lines a
-        // field pair, 50 Hz): kFi / (25 lines) reduced
-        if (fmt.lines == 625) { hNum = 768; hDen = 1; }
-        else if (fmt.lines == 525) { hNum = 2288; hDen = 3; }
-        else {
+        else if (c.internalMsps == 10 || c.internalMsps == 16 || c.internalMsps == 20) kFi = (double)c.internalMsps * 1e6;
+        // exact line length in internal samples. 625 lines: 64 us times the internal rate. 525 lines: 286/4.5 MHz times it, reduced
+        // (12 MHz -> 2288/3, 10 -> 5720/9, 16 -> 9152/9, 20 -> 11440/9). 405 and 819 lines (25 lines a field pair, 50 Hz): kFi / (25 lines) reduced
+        const int64_t fi = (int64_t)std::llround(kFi);
+        if (fmt.lines == 625) { hNum = fi * 64 / 1000000; hDen = 1; }
+        else if (fmt.lines == 525) {
+            hNum = fi * 286; hDen = 4500000;
+            int64_t a0 = hNum, b0 = hDen;
+            while (b0) { const int64_t t = a0 % b0; a0 = b0; b0 = t; }
+            hNum /= a0; hDen /= a0;
+        } else {
             int64_t num = (int64_t)std::llround(kFi), den = 25 * (int64_t)fmt.lines;
             int64_t a0 = num, b0 = den;
             while (b0) { const int64_t t = a0 % b0; a0 = b0; b0 = t; }
@@ -205,14 +238,23 @@ struct AtvGenerator::Impl {
         secGR.assign(t.size(), 0.f); secGI.assign(t.size(), 0.f);
         for (size_t k = 0; k < t.size(); k++) { secGR[k] = (float)t[t.size() - 1 - k].real(); secGI[k] = (float)t[t.size() - 1 - k].imag(); }
         // interpolation 4 -> 12 Msps (gain 3) as three polyphase branches: output j uses the taps t = r + 3 s with r = (j + mu) % 3
-        const std::vector<float> up = lowpass(1.5e6, 2.5e6, kFi, 50, 61);
-        secMu = (int)up.size() / 2;
-        secS = ((int)up.size() + 2) / 3;
-        for (int r = 0; r < 3; r++) {
-            secPoly[r].assign((size_t)secS, 0.f);
-            for (int q = 0; q < secS; q++) if (r + 3 * q < (int)up.size()) secPoly[r][(size_t)q] = 3.f * up[(size_t)(r + 3 * q)];
+        secFrac = std::fabs(kFi - 12e6) >= 1.0;   // 12 Msps stays on the polyphase; 10, 16 (exact x4) and 20 (exact x5) use the sinc kernel
+        if (!secFrac) {
+            const std::vector<float> up = lowpass(1.5e6, 2.5e6, kFi, 50, 61);
+            secMu = (int)up.size() / 2;
+            secS = ((int)up.size() + 2) / 3;
+            for (int r = 0; r < 3; r++) {
+                secPoly[r].assign((size_t)secS, 0.f);
+                for (int q = 0; q < secS; q++) if (r + 3 * q < (int)up.size()) secPoly[r][(size_t)q] = 3.f * up[(size_t)(r + 3 * q)];
+            }
+            secPad = secS + 2;
+        } else secPad = kKernTaps;          // the fractional kernel reads this many samples behind and ahead
+        if (std::fabs(kFi - 12e6) < 1.0) { secBellNum = 4286; secBellDen = 12000; }
+        else {
+            int64_t num = 4286000, den = (int64_t)std::llround(kFi), a0 = num, b0 = den;
+            while (b0) { const int64_t t = a0 % b0; a0 = b0; b0 = t; }
+            secBellNum = num / a0; secBellDen = den / a0;
         }
-        secPad = secS + 2;
         secC0R.assign((size_t)(kSecamNb + 2 * kSecamPad), 0.f); secC0I = secC0R;
         secC1R.assign((size_t)(kSecamNb + 2 * secPad), 0.f); secC1I = secC1R;
     }
@@ -279,8 +321,10 @@ struct AtvGenerator::Impl {
         const double tOn = (bottle || lead) ? kSecamLeadInUs : F.blankEndUs, tOff = F.lineUs - F.frontPorchUs;
         const float tr = 0.3f;
         const double w = 2 * kPi * kSecamBellHz / kFi;
-        const int64_t nm = (nStart * 4286) % 12000;                        // exact: fc / fs = 4286 / 12000
-        std::complex<double> rot0 = std::polar(1.0, 2 * kPi * (double)nm / 12000.0);
+        // exact fraction bell/fs. At 12 Msps this is the historical 4286/12000, so that path does not move by a rounding
+        const int64_t nm = std::fabs(kFi - 12e6) < 1.0 ? (nStart * 4286) % 12000 : (nStart % secBellDen) * secBellNum % secBellDen;
+        const double bellDen = std::fabs(kFi - 12e6) < 1.0 ? 12000.0 : (double)secBellDen;
+        std::complex<double> rot0 = std::polar(1.0, 2 * kPi * (double)nm / bellDen);
         const std::complex<float> rot((float)std::cos(w), (float)std::sin(w));
         std::complex<float> p((float)rot0.real(), (float)rot0.imag());
         const int jOn = std::max(0, (int)std::floor((tOn - 0.3 / 0.59 - u0) / dtUs)), jOff = std::min(count, (int)std::ceil((tOff + 0.3 / 0.59 - u0) / dtUs) + 1);
@@ -290,12 +334,24 @@ struct AtvGenerator::Impl {
             const float u = u0 + j * dtUs;
             const float g = edge(u - (float)tOn, tr) - edge(u - (float)tOff, tr);
             if (g > 0) {
-                const int r = (j + secMu) % 3, idx0 = (j + secMu - r) / 3;       // the branch and the newest input it uses
-                const float* h = secPoly[r].data();
-                const float* cr = &secC1R[(size_t)(secPad + idx0 - secS + 1)];
-                const float* ci = &secC1I[(size_t)(secPad + idx0 - secS + 1)];
                 float yr = 0, yi = 0;
-                for (int q = 0; q < secS; q++) { yr += h[q] * cr[secS - 1 - q]; yi += h[q] * ci[secS - 1 - q]; }
+                if (!secFrac) {
+                    const int r = (j + secMu) % 3, idx0 = (j + secMu - r) / 3;       // the branch and the newest input it uses
+                    const float* h = secPoly[r].data();
+                    const float* cr = &secC1R[(size_t)(secPad + idx0 - secS + 1)];
+                    const float* ci = &secC1I[(size_t)(secPad + idx0 - secS + 1)];
+                    for (int q = 0; q < secS; q++) { yr += h[q] * cr[secS - 1 - q]; yi += h[q] * ci[secS - 1 - q]; }
+                } else {
+                    // 4 samples per microsecond. The kernel is the output resampler's, in units of these 4 Msps samples
+                    const double pin = (double)u * 4.0;
+                    int64_t i0 = (int64_t)std::floor(pin);
+                    int ph = (int)std::lround((pin - (double)i0) * kKernPhases);
+                    if (ph >= kKernPhases) { ph -= kKernPhases; i0++; }
+                    const float* kk = &kern[(size_t)ph * kKernTaps];
+                    const float* cr = &secC1R[(size_t)(secPad + i0 - (kKernTaps / 2 - 1))];
+                    const float* ci = &secC1I[(size_t)(secPad + i0 - (kKernTaps / 2 - 1))];
+                    for (int q = 0; q < kKernTaps; q++) { yr += kk[q] * cr[q]; yi += kk[q] * ci[q]; }
+                }
                 lineV[(size_t)j] += g * (yr * p.real() - yi * p.imag());
             }
             p *= rot;
@@ -324,6 +380,8 @@ struct AtvGenerator::Impl {
         cfg.cnrDb = c.cnrDb; cfg.cfoHz = c.cfoHz; cfg.sroPpm = c.sroPpm;
         cfg.echoDb = c.echoDb; cfg.echoDelayUs = c.echoDelayUs; cfg.echoPhaseDeg = c.echoPhaseDeg;
         cfg.syncCompression = c.syncCompression; cfg.humPct = c.humPct; cfg.humHz = c.humHz;
+        if (c.stereo != cfg.stereo) { livePcm.clear(); liveL.clear(); liveR.clear(); audioBlock = ~0ull; }
+        cfg.stereo = c.stereo;
         cfg.sound = c.sound; cfg.level = c.level;
         step = kFi / cfg.rate / (1.0 + cfg.sroPpm * 1e-6);
         prog.mode = cfg.sound; prog.preUs = fmt.preEmphUs;
@@ -677,11 +735,23 @@ struct AtvGenerator::Impl {
             return;
         }
         size_t i = 0;
+        const bool a2 = a2On();
+        if (a2) sR.resize(n);
         while (i < n) {
             const uint64_t k = k0 + i, kb = k / B;
             if (kb != audioBlock || audioDt != dt) {
-                if (kb == audioBlock + 1 && audioDt == dt) audioA0 = audioA1; else audioA0 = liveAt((double)(kb * B) * dt);
-                audioA1 = liveAt((double)((kb + 1) * B) * dt);
+                const bool cont = kb == audioBlock + 1 && audioDt == dt;
+                if (!a2) {
+                    if (cont) audioA0 = audioA1; else audioA0 = liveAt((double)(kb * B) * dt);
+                    audioA1 = liveAt((double)((kb + 1) * B) * dt);
+                } else {
+                    // the first carrier carries the sum, the second the right channel (ITU-R BS.707)
+                    double L, R;
+                    if (cont) { audioA0 = audioA1; audioR0 = audioR1; }
+                    else { liveLR((double)(kb * B) * dt, L, R); audioA0 = 0.5 * (L + R); audioR0 = R; }
+                    liveLR((double)((kb + 1) * B) * dt, L, R);
+                    audioA1 = 0.5 * (L + R); audioR1 = R;
+                }
                 audioBlock = kb; audioDt = dt;
             }
             // up to the end of this block of 32 samples the audio is a straight line: the phase advances by a constant plus a ramp
@@ -690,6 +760,10 @@ struct AtvGenerator::Impl {
             double* pd = &sPhD[i];
             // the carrier and the deviation, as phase; the sum is never reduced (the result must not depend on how the calls split the stream)
             for (size_t q = 0; q < cnt; q++) { ph += w0 + dk * (audioA0 + slope * (double)(m0 + q)); pd[q] = ph; }
+            if (a2) {
+                const double slopeR = (audioR1 - audioR0) / (double)B;
+                for (size_t q = 0; q < cnt; q++) sR[i + q] = audioR0 + slopeR * (double)(m0 + q);
+            }
             i += cnt;
         }
         // the phase into [-pi, pi]
@@ -700,6 +774,27 @@ struct AtvGenerator::Impl {
             float y = x + 1.5707963f;
             if (y > 3.1415927f) y -= 6.2831855f;
             out[i] += cf32(sinPi(y) * amp, sinPi(x) * amp);             // cos and sin
+        }
+        if (!a2) return;
+        // second carrier, 15.5 lines (242.1875 kHz) above the first, 7 dB down. Its own FM is the right channel, plus the
+        // identification: 54.6875 kHz deviated by ±2.5 kHz, that tone itself amplitude-modulated 50 % at 117.5 Hz (stereo)
+        double w2 = 2 * kPi * (fSnd + 242187.5) * dt;
+        w2 -= 2 * kPi * std::nearbyint(w2 / (2 * kPi));
+        const double dkP = 2 * kPi * 2500.0 * dt;
+        const float amp2 = amp * (float)std::pow(10.0, -7.0 / 20.0);
+        double ph2 = sndPh2;
+        for (size_t q = 0; q < n; q++) {
+            const double tp = (double)(k0 + q) * dt;
+            const double pilot = (1.0 + 0.5 * Programme::sinTurns(117.5 * tp)) * Programme::sinTurns(54687.5 * tp);
+            ph2 += w2 + dk * sR[q] + dkP * pilot;
+            sPhD[q] = ph2;
+        }
+        sndPh2 = ph2;
+        for (size_t q = 0; q < n; q++) {
+            const float x = (float)(sPhD[q] - 2 * kPi * std::nearbyint(sPhD[q] * (0.5 / kPi)));
+            float y = x + 1.5707963f;
+            if (y > 3.1415927f) y -= 6.2831855f;
+            out[q] += cf32(sinPi(y) * amp2, sinPi(x) * amp2);
         }
     }
 
@@ -760,7 +855,7 @@ double AtvGenerator::timeSec() const { return p_->cfg.startSec + p_->pos / p_->k
 bool AtvGenerator::update(const AtvGenConfig& c) {
     Impl& s = *p_;
     if (c.sys != s.cfg.sys || c.colour != s.cfg.colour || c.rate != s.cfg.rate || c.pattern != s.cfg.pattern || c.groupDelay != s.cfg.groupDelay ||
-        c.nyquistTx != s.cfg.nyquistTx || c.setup != s.cfg.setup || c.secamIdent != s.cfg.secamIdent) return false;
+        c.nyquistTx != s.cfg.nyquistTx || c.setup != s.cfg.setup || c.secamIdent != s.cfg.secamIdent || c.internalMsps != s.cfg.internalMsps) return false;
     s.applyRuntime(c, false);
     return true;
 }
@@ -801,6 +896,8 @@ public:
         c.nyquistTx = s.modeOpt[6] == 1;
         c.setup = s.modeOpt[7] == 0;
         c.secamIdent = c.colour == kAtvSecam ? std::min(2, std::max(0, s.modeOpt[7])) : 0;
+        c.internalMsps = s.modeOpt[8] == 1 ? 10 : s.modeOpt[8] == 2 ? 16 : s.modeOpt[8] == 3 ? 20 : 12;
+        c.stereo = s.modeOpt[9] == 1;
         c.syncCompression = std::min(0.9, std::max(0.0, s.modeVal[1] / 100.0));
         return true;
     }

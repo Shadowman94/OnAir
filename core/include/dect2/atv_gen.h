@@ -19,6 +19,10 @@
 //   modeOpt[6] 1 = the transmitter already has the Nyquist slope (a modulator with a SAW filter) instead of a flat vestigial region
 //   modeOpt[7] 1 = no black-level setup in the 525-line systems (Japan); with SECAM instead: how the lines are identified, 0 both (the subcarrier at its rest
 //              frequency on the back porch of every line, and the 9 lines of field identification signals), 1 the back porch only, 2 the field lines only
+//   modeOpt[8] where the picture is made: 0 at 12 Msps (default), 1 at 10, 2 at 16, 3 at 20. Matching the radio (16 or 20) skips the resampling,
+//              so its images are not there. 10 Msps is an exact half of 20 and limits video to 4.5 MHz. System E stays at 24 Msps (its video is 10 MHz)
+//   modeOpt[9] 1 = A2 stereo (Zweiton) on B/G and D/K: a second FM carrier 242.1875 kHz above the sound carrier, 7 dB weaker, carrying the right
+//              channel. The first carrier carries (left + right) / 2, so a mono set still works. The second carrier has the 117.5 Hz stereo identification
 //   modeVal[1] sync compression in percent: the sync pulses lose this share of their height
 #pragma once
 #include "mode_synth.h"
@@ -42,6 +46,7 @@ struct AtvGenConfig {
     double syncCompression = 0;   // 0 .. 0.9
     double humPct = 0, humHz = 50;
     int sound = 0;                // see above
+    bool stereo = false;         // A2 on B/G and D/K: second FM carrier, right channel. Off: the one mono carrier
     int pattern = 0;              // 0 card, 1 bars, 2 ramp
     std::string ident;            // text on the test card; empty: ONAIR TEST
     // 48 kHz interleaved stereo for the sound carrier (mic / file). Empty: the built-in tone / melody of `sound`.
@@ -52,6 +57,7 @@ struct AtvGenConfig {
     bool nyquistTx = false;
     bool setup = true;            // 7.5 IRE black level in M
     int secamIdent = 0;           // SECAM: 0 lead-in on the lines and bottles in the field blanking, 1 lead-in only, 2 bottles only
+    int internalMsps = 12;        // 12 (default), 10, 16 or 20: the rate the picture is made at, before interpolation to `rate`. System E ignores this and uses 24
     double level = 0.4;           // peak carrier amplitude (the complex samples then have an rms of about 0.2)
     double startSec = 0;          // time shown by the clock at the start
     uint64_t seed = 1;
@@ -70,7 +76,7 @@ public:
     void generate(size_t n, std::vector<cf32>& out);    // appends
     // The things that may change while it plays (noise, offsets, ghost, hum, compression, sound); false if something else differs
     bool update(const AtvGenConfig& c);
-    // The composite video before modulation, at kInternalRate, as it is made (tests); the tap sees every sample once
+    // The composite video before modulation, at the internal rate (kInternalRate, or 10/16/20 Msps when asked, 24 for system E), as it is made (tests); the tap sees every sample once
     static constexpr double kInternalRate = 12e6;
     void setCompositeTap(std::function<void(const float*, size_t)> tap);
     const AtvCard& card() const;

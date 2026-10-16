@@ -16,6 +16,7 @@
 #include "dect2/isdbt_gen.h"
 #include "dect2/m17_codec2.h"
 #include "dect2/mode_tuning.h"
+#include "dect2/offset_tune.h"
 #include "dect2/t2.h"
 #include "dect2/t2gen.h"
 extern "C" {
@@ -671,8 +672,12 @@ std::unique_ptr<TxGenerator> makeTxGenerator(const TxModeSpec& m, const TxReques
 }
 
 double txRequestRate(const TxModeSpec& m, const TxRequest& r, const TxRateLimits& lim) {
-    double rate = m.stdMode == 0 ? nativeRateHz(r.bandwidthMhz > 0 ? r.bandwidthMhz : 8) : m.nominalRateHz;
-    if (m.stdMode == 6) rate = std::max(rate, (r.synth.isdbtBwMhz >= 7 ? r.synth.isdbtBwMhz : 6) * 1e6 * 1.34);
+    double rate;
+    if (r.rateHz > 0) rate = r.rateHz;   // the operator's rate, not the mode's
+    else {
+        rate = m.stdMode == 0 ? nativeRateHz(r.bandwidthMhz > 0 ? r.bandwidthMhz : 8) : m.nominalRateHz;
+        if (m.stdMode == 6) rate = std::max(rate, (r.synth.isdbtBwMhz >= 7 ? r.synth.isdbtBwMhz : 6) * 1e6 * 1.34);
+    }
     if (lim.minHz > 0 && rate < lim.minHz) rate = lim.minHz;
     if (lim.maxHz > 0 && rate > lim.maxHz) rate = lim.maxHz;
     return rate;
@@ -735,6 +740,16 @@ bool TxSession::start(std::unique_ptr<TxSink> sink, const TxRequest& r, const Tx
     t.sampleRate = txRequestRate(*mode, r, lim);
     if (!sink_->open(t, err)) { note("could not start: " + err); sink_.reset(); return false; }
     rate_ = sink_->sampleRate() > 0 ? sink_->sampleRate() : t.sampleRate;
+    if (req_.tune.signalHz != 0 && rate_ > 0 && std::fabs(req_.tune.signalHz) >= rate_ * 0.45) {
+        char b[280];
+        snprintf(b, sizeof b, "the signal offset of %.3f MHz does not fit at %.3f Msps: keep it inside %.3f MHz of the centre, or the edges of the signal alias",
+                 req_.tune.signalHz / 1e6, rate_ / 1e6, rate_ * 0.45 / 1e6);
+        err = b;
+        note("could not start: " + err);
+        sink_->close();
+        sink_.reset();
+        return false;
+    }
     if (txModeNeedsAudio(*mode, req_) && !req_.carrierTune) {
         audio_ = std::make_unique<AudioIn>();
         AudioIn::Kind k = AudioIn::Tone;
@@ -782,18 +797,28 @@ bool TxSession::start(std::unique_ptr<TxSink> sink, const TxRequest& r, const Tx
              r.loop ? "until stopped" : (std::to_string(r.onceSeconds).substr(0, std::to_string(r.onceSeconds).find('.') + 2) + " s, one pass").c_str());
     note(b);
     if (req_.carrierTune) note("CARRIER TUNE (unmodulated, for adjusting the transmission — not a message)");
+    if (req_.tune.signalHz != 0) {
+        char sh[240];
+        snprintf(sh, sizeof sh, "the modulated signal is %+.3f kHz from the radio centre, so it goes out at %.6f MHz; the radio's own spike stays at the centre",
+                 req_.tune.signalHz / 1e3, (txRadioHz(r.tune) + req_.tune.signalHz) / 1e6);
+        note(sh);
+    }
     gen_t_ = std::thread([this] { generatorLoop(); });
     send_t_ = std::thread([this] { senderLoop(); });
     return true;
 }
 
 void TxSession::generatorLoop() {
+    // OffsetMixer subtracts its argument. A positive signalHz moves the carrier up from DC, off the radio's own spike.
+    OffsetMixer shift;
+    shift.set(-req_.tune.signalHz, rate_);
     const uint64_t limit = req_.loop ? ~0ull : (uint64_t)(std::max(0.1, req_.onceSeconds) * rate_);
     uint64_t made = 0;
     while (!stop_ && made < limit) {
         const size_t n = (size_t)std::min<uint64_t>(kBlock, limit - made);
         std::vector<cf32> blk(n);
         gen_->generate(blk.data(), n);
+        shift.mix(blk.data(), n);
         tapWrite(blk.data(), n);
         made += n;
         std::unique_lock<std::mutex> lk(mu_);
@@ -885,8 +910,38 @@ void TxSession::stop() {
     }
 }
 
+void TxSession::setSpectrumTap(bool on) {
+    const int want = on ? 1 : 2;
+    const int prev = tapMode_.exchange(want, std::memory_order_acq_rel);
+    if (on && prev != 1) {
+        tapArm_.store(false, std::memory_order_relaxed);
+        std::lock_guard<std::mutex> lk(mu_);
+        tap_.clear();
+        tapPos_ = 0;
+        tapHave_ = 0;
+    }
+}
+
+void TxSession::armSpectrumTap() {
+    tapMode_.store(1, std::memory_order_release);
+    tapArm_.store(true, std::memory_order_release);
+}
+
 void TxSession::tapWrite(const cf32* x, size_t n) {
     if (!x || !n || rate_ <= 0) return;
+    const int mode = tapMode_.load(std::memory_order_acquire);
+    if (mode == 2) return;
+    if (mode == 1) {
+        if (!tapArm_.exchange(false, std::memory_order_acq_rel)) return;
+        constexpr size_t kKeep = 2048;   // one spectrum FFT; the rest of the block is not copied
+        const size_t use = std::min(n, kKeep);
+        std::lock_guard<std::mutex> lk(mu_);
+        if (tap_.size() != use) tap_.resize(use);
+        std::memcpy(tap_.data(), x + (n - use), use * sizeof(cf32));
+        tapPos_ = 0;
+        tapHave_ = use;
+        return;
+    }
     const size_t cap = (size_t)std::max<double>(n, std::min(rate_ * 0.5, 1e6));
     std::lock_guard<std::mutex> lk(mu_);
     if (tap_.size() != cap) { tap_.assign(cap, cf32(0.f, 0.f)); tapPos_ = 0; tapHave_ = 0; }

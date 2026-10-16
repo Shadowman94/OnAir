@@ -512,6 +512,267 @@ int main() {
         for (size_t i = 0; i < x1.size(); i++) same &= x1[i] == x3[i];
         CHECK(same, "chunk sizes do not change the signal");
     }
+    // ---- 10, 16 and 20 Msps internal rates: exact line grid, PAL burst, SECAM rest frequency. 12 Msps stays the default.
+    {
+        auto toneAt = [](const std::vector<float>& v, double fs, double t0Us, double t1Us, double fLo, double fHi, double& fHz) {
+            const size_t a = (size_t)std::ceil(t0Us * 1e-6 * fs), b = (size_t)std::floor(t1Us * 1e-6 * fs);
+            if (b <= a || b >= v.size()) { fHz = 0; return; }
+            double mean = 0, sw = 0;
+            std::vector<double> w(b - a + 1);
+            for (size_t i = a; i <= b; i++) { w[i - a] = 0.5 - 0.5 * std::cos(2 * M_PI * (double)(i - a + 0.5) / (double)(b - a + 1)); mean += w[i - a] * v[i]; sw += w[i - a]; }
+            mean /= sw;
+            double best = -1, bf = fLo;
+            auto power = [&](double f) {
+                double c = 0, s2 = 0;
+                for (size_t i = a; i <= b; i++) { const double ph = 2 * M_PI * f * (double)i / fs; c += w[i - a] * (v[i] - mean) * std::cos(ph); s2 += w[i - a] * (v[i] - mean) * std::sin(ph); }
+                return c * c + s2 * s2;
+            };
+            for (double f = fLo; f <= fHi; f += 10e3) { const double pw = power(f); if (pw > best) { best = pw; bf = f; } }
+            for (double f = bf - 10e3; f <= bf + 10e3; f += 200) { const double pw = power(f); if (pw > best) { best = pw; bf = f; } }
+            fHz = bf;
+        };
+        auto collect = [](AtvGenConfig c, double secs, std::vector<int>& lens, std::vector<float>& v) {
+            AtvGenerator g(c);
+            g.setCompositeTap([&](const float* x, size_t n) { lens.push_back((int)n); v.insert(v.end(), x, x + n); });
+            std::vector<cf32> sink(1 << 14);
+            const size_t need = (size_t)(secs * c.rate);
+            for (size_t done = 0; done < need; done += sink.size()) g.generate(sink.data(), sink.size());
+            return g.ok();
+        };
+        // a burst is only about 2 us, too short for a frequency peak. Correlating it (and a colour bar) against the
+        // 4.43361875 MHz subcarrier checks the frequency the way the 12 Msps tests do: a wrong clock walks the phase off 135 degrees
+        auto subAt = [](const std::vector<float>& vv, double fs, double fsc, double t0Us, double t1Us, double& us, double& vs, double& mean) {
+            const size_t a = (size_t)std::ceil(t0Us * 1e-6 * fs), b = (size_t)std::floor(t1Us * 1e-6 * fs);
+            double ss = 0, sc = 0, sw1 = 0, sm = 0;
+            if (b <= a || b >= vv.size()) { us = vs = mean = 0; return; }
+            for (size_t i = a; i <= b; i++) {
+                const double w = 0.5 - 0.5 * std::cos(2 * M_PI * (double)(i - a + 0.5) / (double)(b - a + 1));
+                const double ph = 2 * M_PI * fsc * (double)i / fs;
+                ss += w * vv[i] * std::sin(ph); sc += w * vv[i] * std::cos(ph); sw1 += w; sm += w * vv[i];
+            }
+            us = 2 * ss / sw1; vs = 2 * sc / sw1; mean = sm / sw1;
+        };
+        for (int msps : {10, 16, 20}) {
+            const int expect = msps == 10 ? 640 : msps == 16 ? 1024 : 1280;
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvPal; c.cnrDb = 100; c.rate = msps * 1e6; c.internalMsps = msps;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.04, lens, v), "%d Msps PAL: generator", msps);
+            CHECK(!lens.empty(), "%d Msps PAL: composite", msps);
+            for (int n : lens) CHECK(n == expect, "%d Msps PAL: line is %d samples, expected %d", msps, n, expect);
+            AtvGenerator g(c);
+            const AtvFormat& f = g.format();
+            int bx0, bx1, by0, by1;
+            g.card().barsArea(bx0, bx1, by0, by1);
+            const double pxUs = f.activeUs / f.picW;
+            int bursts = 0;
+            for (int row = by0 + 8; row < by1 - 8 && bursts < 2; row += 17) {
+                const int fld = row & 1, k = row >> 1, line = f.firstLine[fld] + k;
+                const double ls = (line - 1) * f.lineUs;
+                const double bs = ls + f.burstStartUs + 0.4, be = ls + f.burstStartUs + f.burstCycles / f.fscHz * 1e6 - 0.3;
+                double bu, bv, bm;
+                subAt(v, c.rate, f.fscHz, bs, be, bu, bv, bm);
+                const double th = std::atan2(bv, bu) * 180 / M_PI, bamp = std::hypot(bu, bv);
+                printf("%d Msps PAL line %d burst %.1f deg amplitude %.4f\n", msps, line, th, bamp);
+                CHECK(std::fabs(std::fabs(th) - 135) < 6, "%d Msps PAL line %d: burst phase %.1f degrees, expected +-135", msps, line, th);
+                CHECK(near(bamp, f.burstAmp, 0.15 * f.burstAmp), "%d Msps PAL line %d: burst amplitude %.4f, expected %.4f", msps, line, bamp, f.burstAmp);
+                const int vsign = th > 0 ? 1 : -1;
+                float rgb[3]; atvEbuBar(2, rgb);
+                float y, u, vv;
+                atvRgbToYuv(rgb[0], rgb[1], rgb[2], y, u, vv);
+                const int xa = bx0 + (bx1 - bx0) * 2 / 8, xb = bx0 + (bx1 - bx0) * 3 / 8;
+                const double t0 = ls + f.blankEndUs + (xa + 0.25 * (xb - xa)) * pxUs, t1 = ls + f.blankEndUs + (xa + 0.75 * (xb - xa)) * pxUs;
+                double su, sv, sm;
+                subAt(v, c.rate, f.fscHz, t0, t1, su, sv, sm);
+                const double sc = 1 - f.setup;
+                CHECK(near(su, sc * u, 0.02) && near(sv * vsign, sc * vv, 0.02), "%d Msps PAL line %d: chroma U %.3f V %.3f, expected %.3f %.3f", msps, line, su, sv, sc * u, sc * vv);
+                bursts++;
+            }
+            CHECK(bursts == 2, "%d Msps PAL: measured %d bursts", msps, bursts);
+        }
+        {
+            AtvGenConfig c; c.sys = kAtvM; c.colour = kAtvNtsc; c.cnrDb = 100; c.rate = 10e6; c.internalMsps = 10;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.01, lens, v), "10 Msps NTSC: generator");
+            CHECK(lens.size() >= 18, "10 Msps NTSC: %zu lines", lens.size());
+            for (int n : lens) CHECK(n == 635 || n == 636, "10 Msps NTSC: line is %d samples", n);
+            for (size_t i = 0; i + 9 <= lens.size(); i += 9) {
+                int s = 0; for (int k = 0; k < 9; k++) s += lens[i + k];
+                CHECK(s == 5720, "10 Msps NTSC: 9 lines are %d samples, expected 5720", s);
+            }
+        }
+        for (int msps : {16, 20}) {
+            const int sum9 = msps == 16 ? 9152 : 11440;
+            const int lo = sum9 / 9, hi = lo + 1;
+            AtvGenConfig c; c.sys = kAtvM; c.colour = kAtvNtsc; c.cnrDb = 100; c.rate = msps * 1e6; c.internalMsps = msps;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.008, lens, v), "%d Msps NTSC: generator", msps);
+            CHECK(lens.size() >= 18, "%d Msps NTSC: %zu lines", msps, lens.size());
+            for (int n : lens) CHECK(n == lo || n == hi, "%d Msps NTSC: line is %d samples", msps, n);
+            for (size_t i = 0; i + 9 <= lens.size(); i += 9) {
+                int s = 0; for (int k = 0; k < 9; k++) s += lens[i + k];
+                CHECK(s == sum9, "%d Msps NTSC: 9 lines are %d samples, expected %d", msps, s, sum9);
+            }
+        }
+        {
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvSecam; c.cnrDb = 100; c.rate = 10e6; c.internalMsps = 10;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.05, lens, v), "10 Msps SECAM: generator");
+            AtvGenerator g(c);
+            const AtvFormat& f = g.format();
+            int bx0, bx1, by0, by1;
+            g.card().barsArea(bx0, bx1, by0, by1);
+            int seen = 0;
+            for (int row = by0 + 10; row < by1 - 10 && seen < 2; row += 9) {
+                const int fld = row & 1, k = row >> 1, line = f.firstLine[fld] + k;
+                const bool isR = ((line - 1) & 1) == 0;
+                const double ls = (line - 1) * f.lineUs;
+                double fr = 0;
+                toneAt(v, 10e6, ls + 6.5, ls + 9.7, 3.9e6, 4.9e6, fr);
+                const double f0 = isR ? kSecamF0R : kSecamF0B;
+                printf("10 Msps SECAM line %d lead-in %.0f Hz, expected %.0f\n", line, fr, f0);
+                CHECK(near(fr, f0, 15e3), "10 Msps SECAM line %d: lead-in %.0f Hz, expected %.0f", line, fr, f0);
+                seen++;
+            }
+            CHECK(seen == 2, "10 Msps SECAM: measured %d lead-ins", seen);
+        }
+        {
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvSecam; c.cnrDb = 100; c.rate = 20e6; c.internalMsps = 20;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.04, lens, v), "20 Msps SECAM: generator");
+            AtvGenerator g(c);
+            const AtvFormat& f = g.format();
+            int bx0, bx1, by0, by1;
+            g.card().barsArea(bx0, bx1, by0, by1);
+            int seen = 0;
+            for (int row = by0 + 10; row < by1 - 10 && seen < 2; row += 9) {
+                const int fld = row & 1, k = row >> 1, line = f.firstLine[fld] + k;
+                const bool isR = ((line - 1) & 1) == 0;
+                const double ls = (line - 1) * f.lineUs;
+                double fr = 0;
+                toneAt(v, 20e6, ls + 6.5, ls + 9.7, 3.9e6, 4.9e6, fr);
+                const double f0 = isR ? kSecamF0R : kSecamF0B;
+                printf("20 Msps SECAM line %d lead-in %.0f Hz, expected %.0f\n", line, fr, f0);
+                CHECK(near(fr, f0, 15e3), "20 Msps SECAM line %d: lead-in %.0f Hz, expected %.0f", line, fr, f0);
+                seen++;
+            }
+            CHECK(seen == 2, "20 Msps SECAM: measured %d lead-ins", seen);
+        }
+        {
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvPal; c.cnrDb = 100; c.rate = 12e6;
+            std::vector<int> lens; std::vector<float> v;
+            CHECK(collect(c, 0.004, lens, v), "12 Msps default: generator");
+            CHECK(!lens.empty() && lens[0] == 768, "12 Msps default: line is %d samples, expected 768", lens.empty() ? 0 : lens[0]);
+        }
+        {
+            auto firstLen = [](AtvGenConfig c) {
+                int n = -1;
+                AtvGenerator g(c);
+                g.setCompositeTap([&](const float*, size_t k) { if (n < 0) n = (int)k; });
+                std::vector<cf32> sink(4096);
+                if (g.ok()) g.generate(sink.data(), sink.size());
+                return n;
+            };
+            AtvGenConfig e; e.sys = kAtvE; e.colour = kAtvMono; e.cnrDb = 100; e.rate = 24e6;
+            const int a = firstLen(e);
+            for (int msps : {10, 16, 20}) {
+                AtvGenConfig eN = e; eN.internalMsps = msps;
+                const int b = firstLen(eN);
+                CHECK(a > 0 && a == b, "system E stays at 24 Msps with %d asked: line %d and %d samples", msps, a, b);
+            }
+        }
+        {
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvPal; c.cnrDb = 40; c.rate = 20e6; c.internalMsps = 10;
+            AtvGenerator g(c);
+            std::vector<cf32> x;
+            g.generate((size_t)(0.02 * c.rate), x);
+            double r = 0, pk = 0;
+            for (const auto& s : x) { r += std::norm(s); pk = std::max(pk, (double)std::abs(s)); }
+            r = std::sqrt(r / x.size());
+            CHECK(r > 0.15 && r < 0.30 && pk < 0.9, "10 Msps into 20 Msps: rms %.3f peak %.3f", r, pk);
+        }
+        for (int msps : {16, 20}) {
+            AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvPal; c.cnrDb = 40; c.rate = msps * 1e6; c.internalMsps = msps;
+            AtvGenerator g(c);
+            std::vector<cf32> x;
+            g.generate((size_t)(0.01 * c.rate), x);
+            double r = 0, pk = 0;
+            for (const auto& s : x) { r += std::norm(s); pk = std::max(pk, (double)std::abs(s)); }
+            r = std::sqrt(r / x.size());
+            CHECK(r > 0.15 && r < 0.30 && pk < 0.9, "%d Msps matched to the radio: rms %.3f peak %.3f", msps, r, pk);
+        }
+        {
+            SynthConfig s; s.mode = 10; s.snrDb = 30;
+            auto m = makeAtvSynth(s, 20e6);
+            CHECK(m != nullptr && m->configure(s), "12 Msps configures in place");
+            for (int opt : {1, 2, 3}) {
+                s.modeOpt[8] = opt;
+                CHECK(m && !m->configure(s), "switching internal rate (option %d) needs a new generator", opt);
+                CHECK(makeAtvSynth(s, 20e6) != nullptr, "internal rate option %d builds", opt);
+                s.modeOpt[8] = 0;
+                CHECK(m && m->configure(s), "back to 12 Msps configures in place");
+            }
+        }
+    }
+    // ---- A2 stereo: the sum stays on the first carrier, the right channel on a carrier 242.1875 kHz higher and 7 dB weaker
+    {
+        const double fs = 12e6;
+        const int n = 1 << 18;
+        AtvGenConfig c; c.sys = kAtvG; c.colour = kAtvMono; c.cnrDb = 100; c.rate = fs; c.sound = 2; c.stereo = true;
+        c.pullAudio = [](float* st, int frames) {
+            for (int i = 0; i < frames; i++) { st[2 * i] = 0.20f; st[2 * i + 1] = -0.40f; }
+            return frames;
+        };
+        AtvGenerator g(c);
+        std::vector<cf32> x;
+        g.generate((size_t)n, x);
+        const AtvFormat& f = g.format();
+        const double f1 = atvSoundOffsetHz(f), f2 = f1 + 242187.5;
+        Fft fft(n);
+        std::vector<cf32> X = x;
+        double sw2 = 0;
+        for (int i = 0; i < n; i++) { const double w = 0.5 - 0.5 * std::cos(2 * M_PI * i / n); X[(size_t)i] *= (float)w; sw2 += w * w; }
+        fft.forward(X.data());
+        std::vector<float> psd((size_t)n);
+        for (int k = 0; k < n; k++) psd[(size_t)k] = std::norm(X[(size_t)k]);
+        auto ampAt = [&](double fc) { return std::sqrt(bandPower(psd, fs, fc - 100e3, fc + 100e3) / ((double)n * sw2)); };
+        const double a1 = ampAt(f1), a2 = ampAt(f2);
+        const double rel = 20 * std::log10(a2 / a1);
+        printf("A2: second carrier %.2f dB below the first\n", -rel);
+        CHECK(near(rel, -7.0, 1.0), "A2 second carrier %.2f dB, expected -7", rel);
+        auto meanDev = [&](double fc) {
+            std::vector<cf32> s(x.size());
+            for (int i = 0; i < n; i++) { const double p = std::fmod(2 * M_PI * fc * (double)i / fs, 2 * M_PI); s[(size_t)i] = x[(size_t)i] * cf32((float)std::cos(p), (float)-std::sin(p)); }
+            fft.forward(s.data());
+            for (int k = 0; k < n; k++) { const double ff = (k < n / 2 ? k : k - n) * fs / n; if (std::fabs(ff) > 80e3) s[(size_t)k] = 0; }
+            fft.inverse(s.data());
+            double acc = 0; int cnt = 0;
+            for (int i = 4000; i + 8 < n; i += 8) {
+                const cf32 a = s[(size_t)i - 8] / (float)n, b = s[(size_t)i] / (float)n;
+                acc += std::arg(std::complex<double>(b.real(), b.imag()) * std::conj(std::complex<double>(a.real(), a.imag()))) * fs / 8 / (2 * M_PI);
+                cnt++;
+            }
+            return acc / cnt;
+        };
+        const double g3 = std::sqrt(1 + std::pow(2 * M_PI * 3000 * f.preEmphUs * 1e-6, 2));
+        const double exp1 = 0.5 * (0.20 + -0.40) * g3 * f.soundDevKhz * 1e3;
+        const double exp2 = -0.40 * g3 * f.soundDevKhz * 1e3;
+        const double d1 = meanDev(f1), d2 = meanDev(f2);
+        printf("A2 deviation: sum %.0f Hz (expected %.0f), right %.0f Hz (expected %.0f)\n", d1, exp1, d2, exp2);
+        CHECK(near(d1, exp1, 800), "A2 sum carrier %.0f Hz off, expected %.0f", d1, exp1);
+        CHECK(near(d2, exp2, 800), "A2 right carrier %.0f Hz off, expected %.0f", d2, exp2);
+        // system I has no A2 carrier: the same option must not grow a second sound carrier
+        AtvGenConfig i = c; i.sys = kAtvI;
+        AtvGenerator gi(i);
+        std::vector<cf32> xi;
+        gi.generate((size_t)n, xi);
+        const double fi = atvSoundOffsetHz(gi.format());
+        std::vector<cf32> Xi = xi;
+        for (int k = 0; k < n; k++) { const double w = 0.5 - 0.5 * std::cos(2 * M_PI * k / n); Xi[(size_t)k] *= (float)w; }
+        fft.forward(Xi.data());
+        for (int k = 0; k < n; k++) psd[(size_t)k] = std::norm(Xi[(size_t)k]);
+        const double ai1 = ampAt(fi), ai2 = ampAt(fi + 242187.5);
+        CHECK(20 * std::log10(ai2 / ai1) < -20, "system I grew an A2 carrier, %.1f dB below the sound carrier", 20 * std::log10(ai2 / ai1));
+    }
     if (fails) { printf("%d check(s) failed\n", fails); return 1; }
     printf("OK\n");
     return 0;

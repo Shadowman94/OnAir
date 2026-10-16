@@ -10,6 +10,7 @@
 // driver as typed, and the driver's own refusal is shown as it came.
 #include "app.h"
 #include "dect2/hfdig_sstv.h"
+#include "dect2/rate_choice.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -59,6 +60,8 @@ struct TxUi {
     int bwIdx = 0;                           // DVB-T2 / DVB-T channel width: 8, 7, 6, 5 MHz
     double freqMhz = 0;                      // typed by the user, any value; pre-filled from the receiver when the mode is chosen
     double offsetMhz = 0;                    // added only to the frequency sent to the radio; the typed frequency stays freqMhz
+    double signalMhz = 0;                    // shifts the modulated samples off the radio centre; the radio stays on freqMhz + offsetMhz
+    double rateHz = 0;                       // 0: the mode's own sample rate. Otherwise the radio's rate, kept across modes
     float gainDb = 0;
     bool gainSet = false, ampOn = false, loop = true;
     int txCh = 0;                            // 0 = TX1. Shown when the radio has, or may have, more than one output
@@ -84,6 +87,11 @@ struct TxUi {
     Waterfall wf;
     bool wfInit = false;
     float specFrac = 0.45f;
+    int specHz = 0;                      // 0: a new spectrum every frame; else at most this many a second
+    bool specPause = false;              // freeze the picture and stop copying IQ for it
+    double specNext = 0;
+    bool specHave = false;
+    double specFc = 0, specBw = 2, specRate = 0;
     std::vector<double> specX, specY;
 };
 
@@ -160,6 +168,11 @@ void loadPayloadPrefs(TxUi& s) {
     snprintf(s.grid, sizeof s.grid, "%s", p.getS("tx.grid", "").c_str());
     snprintf(s.text, sizeof s.text, "%s", p.getS("tx.text", "").c_str());
     s.offsetMhz = p.getD("tx.offsetMhz", 0);
+    s.signalMhz = p.getD("tx.signalMhz", 0);
+    s.rateHz = p.getD("tx.rateHz", 0);
+    const int hz = (int)p.getI("tx.specHz", 0);
+    s.specHz = hz == 1 || hz == 2 || hz == 5 || hz == 10 ? hz : 0;
+    s.specPause = p.getI("tx.specPause", 0) != 0;
 }
 
 void saveStr(const char* key, const char* v) {
@@ -173,8 +186,10 @@ TxRequest makeReq(const TxUi& s, const TxModeSpec& mode, bool carrier) {
     r.bandwidthMhz = kTxBw[s.bwIdx];
     r.loop = s.loop;
     r.onceSeconds = s.onceSeconds;
+    r.rateHz = s.rateHz;
     r.tune.centerHz = s.freqMhz * 1e6;
     r.tune.offsetHz = s.offsetMhz * 1e6;
+    r.tune.signalHz = s.signalMhz * 1e6;
     r.tune.gainDb = s.gainDb;
     r.tune.ampOn = s.ampOn;
     r.tune.channel = s.txCh < 0 ? 0 : s.txCh;
@@ -453,6 +468,15 @@ void payloadPanel(TxUi& s, const TxModeSpec& mode, bool running) {
             for (int i = 0; i < 5; i++) if (ImGui::Selectable(coln[i], i == co)) s.synth.modeOpt[1] = i;
             ImGui::EndCombo();
         }
+        const char* irn[] = {"12 Msps", "10 Msps", "16 Msps", "20 Msps"};
+        int ir = s.synth.modeOpt[8];
+        if (ir < 0 || ir > 3) ir = 0;
+        ImGui::SetNextItemWidth(160 * gUi);
+        if (ImGui::BeginCombo(tr("Picture rate"), irn[ir])) {
+            for (int i = 0; i < 4; i++) if (ImGui::Selectable(irn[i], i == ir)) s.synth.modeOpt[8] = i;
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The picture is made at this rate, then resampled to the radio. Matching the radio (16 or 20 Msps) skips that resampling, so the copies disappear. 10 Msps is an exact half of 20 Msps and limits video to 4.5 MHz. System E stays at 24 Msps."));
         const char* picn[] = {"test card", "colour bars", "grey ramp"};
         int po = std::max(0, std::min(2, s.synth.modeOpt[2]));
         ImGui::SetNextItemWidth(160 * gUi);
@@ -474,6 +498,9 @@ void payloadPanel(TxUi& s, const TxModeSpec& mode, bool running) {
             ImGui::EndCombo();
         }
         if (s.audioSrc == 0 || s.audioSrc == 1) audioSourceRow(s, running);
+        bool a2 = s.synth.modeOpt[9] == 1;
+        if (ImGui::Checkbox(tr("A2 stereo"), &a2)) s.synth.modeOpt[9] = a2 ? 1 : 0;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Second FM carrier 242 kHz above the sound carrier, 7 dB weaker, carrying the right channel. The first carrier carries the sum, so a mono set still works. B/G and D/K. The microphone and the file keep left and right; the built-in tone is centred."));
         break;
     }
     case TxPayloadKind::BroadcastAudio:
@@ -825,9 +852,12 @@ void txTick(App&) {
         mapTransmitEnded();
     }
     if (!s.session.running()) return;
-    char b[220];
+    char b[320];
     const TxSession::Stats st = s.session.stats();
-    snprintf(b, sizeof b, "%s   %s   %.6f MHz   %.0f s", tr("TRANSMITTING"), s.modeName.c_str(), s.freqSent / 1e6, st.seconds);
+    if (s.signalMhz != 0)
+        snprintf(b, sizeof b, "%s   %s   signal %.6f MHz   %.0f s", tr("TRANSMITTING"), s.modeName.c_str(), s.freqMhz + s.offsetMhz + s.signalMhz, st.seconds);
+    else
+        snprintf(b, sizeof b, "%s   %s   %.6f MHz   %.0f s", tr("TRANSMITTING"), s.modeName.c_str(), s.freqSent / 1e6, st.seconds);
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     const ImVec2 ts = ImGui::CalcTextSize(b);
     const float pad = 8 * gUi;
@@ -905,6 +935,74 @@ bool txModeHighlighted(const ModeDef& m) {
     return std::string(s.subId) == m.subId;
 }
 
+std::string txMspsText(double hz) {
+    char b[32];
+    snprintf(b, sizeof b, "%.3f", hz / 1e6);
+    std::string s = b;
+    while (!s.empty() && s.back() == '0') s.pop_back();
+    if (!s.empty() && s.back() == '.') s.pop_back();
+    return s + " Msps";
+}
+
+RateLimits txRateLimitsOf(const DeviceInfo* radio) {
+    RateLimits L;
+    if (!radio) return L;
+    L = rateLimitsOf(*radio);
+    if (radio->txMinRateHz > 0) L.minHz = radio->txMinRateHz;
+    if (radio->txMaxRateHz > 0) L.maxHz = radio->txMaxRateHz;
+    return L;
+}
+
+void setTxRate(TxUi& s, double hz) {
+    s.rateHz = hz;
+    plat::basePrefs().setD("tx.rateHz", hz);
+}
+
+// The radio's sample rate, on the frequency row. 0 is Auto (the mode's rate). A chosen rate stays when the mode changes.
+void txRateRow(TxUi& s, const DeviceInfo* radio, const TxModeSpec* mode) {
+    const RateLimits L = txRateLimitsOf(radio);
+    TxRequest autoReq;
+    autoReq.bandwidthMhz = kTxBw[s.bwIdx];
+    autoReq.synth = s.synth;
+    const double autoHz = mode ? txRequestRate(*mode, autoReq, TxRateLimits{L.minHz, L.maxHz}) : 0;
+    const std::string preview = s.rateHz > 0 ? txMspsText(s.rateHz) : std::string(tr("Auto")) + " (" + txMspsText(autoHz) + ")";
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150 * gUi);
+    bool openManual = false;
+    if (ImGui::BeginCombo(tr("Rate"), preview.c_str())) {
+        const std::string autoLabel = std::string(tr("Auto")) + " (" + txMspsText(autoHz) + ")";
+        if (ImGui::Selectable(autoLabel.c_str(), s.rateHz <= 0) && s.rateHz > 0) setTxRate(s, 0);
+        for (const RateEntry& e : rateEntries(L, 0)) {
+            std::string label = txMspsText(e.getHz);
+            if (std::fabs(e.askHz - e.getHz) > 1) label += " (for " + txMspsText(e.askHz) + ")";
+            const bool sel = s.rateHz > 0 && std::fabs(deliveredRate(L, s.rateHz) - e.getHz) <= 1;
+            if (ImGui::Selectable(label.c_str(), sel) && !sel) setTxRate(s, e.getHz);
+        }
+        ImGui::Separator();
+        if (ImGui::Selectable(tr("Manual…"))) openManual = true;
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Sample rate of the transmit radio, kept for every mode. Auto is the mode's own rate. A mode that makes samples at a fixed rate is resampled to the rate chosen here."));
+    static double typed = 0;
+    static std::string why;
+    if (openManual) { typed = (s.rateHz > 0 ? s.rateHz : autoHz) / 1e6; why.clear(); ImGui::OpenPopup("##txrateman"); }
+    if (ImGui::BeginPopup("##txrateman")) {
+        ImGui::TextDisabled("%s", tr("Sample rate (Msps)"));
+        ImGui::SetNextItemWidth(120 * gUi);
+        if (openManual) ImGui::SetKeyboardFocusHere();
+        ImGui::InputDouble("##txratev", &typed, 0, 0, "%.3f");
+        const bool enter = ImGui::IsItemDeactivatedAfterEdit() && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false));
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Use")) || enter) {
+            const RateCheck c = checkManualRate(L, 0, std::round(typed * 1e3) * 1e3);
+            if (c.ok) { setTxRate(s, c.hz); ImGui::CloseCurrentPopup(); }
+            else why = c.why;
+        }
+        if (!why.empty()) ImGui::TextColored(ImVec4(0.9f, 0.35f, 0.3f, 1), "%s", why.c_str());
+        ImGui::EndPopup();
+    }
+}
+
 void txBar(App& a) {
     TxUi& s = ui();
     ensureTxMode(a, s);
@@ -922,11 +1020,16 @@ void txBar(App& a) {
     ImGui::SetNextItemWidth(140 * gUi);
     if (ImGui::InputDouble(tr("Offset (MHz)"), &s.offsetMhz, 0.0, 0.0, "%.6f")) plat::basePrefs().setD("tx.offsetMhz", s.offsetMhz);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("This is added to the frequency sent to the radio, for a radio that radiates off frequency."));
-    if (s.offsetMhz != 0) {
-        ImGui::SameLine();
-        ImGui::Text(tr("radio is told %.6f MHz"), s.freqMhz + s.offsetMhz);
-    }
     ImGui::SameLine();
+    ImGui::SetNextItemWidth(160 * gUi);
+    if (ImGui::InputDouble(tr("Signal offset (MHz)"), &s.signalMhz, 0.0, 0.0, "%+.6f")) plat::basePrefs().setD("tx.signalMhz", s.signalMhz);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Shifts the modulated signal away from the radio's centre. The radio stays tuned to Frequency; the signal goes out at Frequency plus this, so the radio's own DC spike is not on the carrier. Example: Frequency 92.5 and +0.2 sends WFM at 92.7."));
+    txRateRow(s, radio, mode);
+    if (s.offsetMhz != 0) {
+        ImGui::Text(tr("radio is told %.6f MHz"), s.freqMhz + s.offsetMhz);
+        if (s.signalMhz != 0) ImGui::SameLine();
+    }
+    if (s.signalMhz != 0) ImGui::Text(tr("signal goes out at %.6f MHz"), s.freqMhz + s.offsetMhz + s.signalMhz);
     ImGui::SetNextItemWidth(240 * gUi);
     if (ImGui::BeginCombo(tr("Transmit radio"), radio ? radio->name.c_str() : tr("Choose a radio to transmit with."))) {
         for (int i : radios) {
@@ -994,7 +1097,10 @@ void txBar(App& a) {
         ImGui::SameLine();
         ImGui::TextColored(kRed, "%s", st.carrierTune ? tr("CARRIER TUNE") : tr("TRANSMITTING"));
         ImGui::SameLine();
-        ImGui::Text("%.6f MHz  %.2f Msps  %.0f s", s.freqSent / 1e6, st.rateHz / 1e6, st.seconds);
+        if (s.signalMhz != 0)
+            ImGui::Text("centre %.6f   signal %.6f MHz  %.2f Msps  %.0f s", s.freqSent / 1e6, s.freqMhz + s.offsetMhz + s.signalMhz, st.rateHz / 1e6, st.seconds);
+        else
+            ImGui::Text("%.6f MHz  %.2f Msps  %.0f s", s.freqSent / 1e6, st.rateHz / 1e6, st.seconds);
     } else {
         ImGui::SameLine();
         ImGui::BeginDisabled(!can);
@@ -1023,39 +1129,106 @@ void txBar(App& a) {
     txNoticePopup(s);
 }
 
+static const char* specRateLabel(int hz) {
+    switch (hz) {
+    case 10: return "10/s";
+    case 5: return "5/s";
+    case 2: return "2/s";
+    case 1: return "1/s";
+    default: return tr("Every frame");
+    }
+}
+
+static void specWatchRow(TxUi& s) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", tr("Display"));
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("How often the spectrum and waterfall are recalculated. Slower, or pause, uses much less CPU on a wide signal such as analog TV. The transmission keeps going."));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130 * gUi);
+    if (ImGui::BeginCombo("##txspecrate", specRateLabel(s.specHz))) {
+        const int rates[] = {0, 10, 5, 2, 1};
+        for (int hz : rates) {
+            if (ImGui::Selectable(specRateLabel(hz), s.specHz == hz)) {
+                s.specHz = hz;
+                s.specNext = 0;
+                plat::basePrefs().setI("tx.specHz", hz);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    if (ImGui::Checkbox(tr("Pause"), &s.specPause)) {
+        if (!s.specPause) s.specNext = 0;
+        plat::basePrefs().setI("tx.specPause", s.specPause ? 1 : 0);
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Freeze the spectrum and waterfall and stop copying samples for them. The transmission keeps going."));
+}
+
 void txSpectrum(App& a) {
     TxUi& s = ui();
     ensureTxMode(a, s);
     if (!s.wfInit && gGfx) { s.wf.init(gGfx); s.wfInit = true; }
     const bool running = s.session.running();
+    const double fcNow = (s.freqSent > 0 ? s.freqSent : s.freqMhz * 1e6) / 1e6;
+    const TxSession::Stats st = running ? s.session.stats() : TxSession::Stats{};
+    ImGui::TextDisabled("%s", running ? tr("TX spectrum (IQ going to the radio)") : tr("Idle — nothing is being sent"));
+    if (running) {
+        ImGui::SameLine();
+        const double rateShow = s.specRate > 0 ? s.specRate : st.rateHz;
+        if (s.signalMhz != 0) ImGui::Text("%.6f MHz centre   signal %.6f MHz   %.3f Msps", fcNow, fcNow + s.offsetMhz + s.signalMhz, rateShow / 1e6);
+        else ImGui::Text("%.6f MHz   %.3f Msps", fcNow, rateShow / 1e6);
+        if (s.specPause) { ImGui::SameLine(); ImGui::TextDisabled("%s", tr("display paused")); }
+    }
+    specWatchRow(s);
+
     std::vector<cf32> iq;
     double rate = 0;
-    if (running) s.session.copyTap(iq, rate);
-    constexpr int kFft = 2048;
-    std::vector<float> db;
-    if (iq.size() >= 64) txSpectrumDb(iq.data() + (iq.size() > (size_t)kFft ? iq.size() - kFft : 0), std::min(iq.size(), (size_t)kFft), kFft, db);
-    const double fc = (running && s.freqSent > 0 ? s.freqSent : s.freqMhz * 1e6) / 1e6;
-    const double bw = rate > 0 ? rate / 1e6 : 2;
-    s.specX.resize(db.empty() ? 2 : db.size());
-    s.specY.resize(s.specX.size());
-    if (db.empty()) {
-        s.specX[0] = fc - bw / 2; s.specX[1] = fc + bw / 2;
-        s.specY[0] = s.specY[1] = -120.f;
+    bool sampled = false;
+    if (!running || s.specPause) {
+        s.session.setSpectrumTap(false);   // the generator copies nothing while the picture is frozen or the transmitter is idle
     } else {
-        const int n = (int)db.size();
-        for (int i = 0; i < n; i++) {
-            const int k = (i + n / 2) % n;   // DC in the middle of the plot
-            s.specX[(size_t)i] = fc + ((i - n / 2) / (double)n) * (rate / 1e6);
-            s.specY[(size_t)i] = db[(size_t)k];
-        }
-        if (s.wfInit) {
-            std::vector<float> row(s.specY.size());
-            for (size_t i = 0; i < s.specY.size(); i++) row[i] = (float)s.specY[i];
-            s.wf.offer(row, ImGui::GetTime());
+        s.session.setSpectrumTap(true);
+        const double now = ImGui::GetTime();
+        if (s.specHz <= 0 || now >= s.specNext) {
+            if (s.specHz > 0) s.specNext = now + 1.0 / s.specHz;
+            s.session.armSpectrumTap();
+            s.session.copyTap(iq, rate);
+            sampled = iq.size() >= 64;
         }
     }
-    ImGui::TextDisabled("%s", running ? tr("TX spectrum (IQ going to the radio)") : tr("Idle — nothing is being sent"));
-    if (running) { ImGui::SameLine(); ImGui::Text("%.6f MHz   %.3f Msps", fc, rate / 1e6); }
+    constexpr int kFft = 2048;
+    if (!running) s.specHave = false;
+    if (sampled) {
+        std::vector<float> db;
+        txSpectrumDb(iq.data() + (iq.size() > (size_t)kFft ? iq.size() - kFft : 0), std::min(iq.size(), (size_t)kFft), kFft, db);
+        if (!db.empty()) {
+            const int n = (int)db.size();
+            s.specX.resize((size_t)n);
+            s.specY.resize((size_t)n);
+            for (int i = 0; i < n; i++) {
+                const int k = (i + n / 2) % n;   // DC in the middle of the plot
+                s.specX[(size_t)i] = fcNow + ((i - n / 2) / (double)n) * (rate / 1e6);
+                s.specY[(size_t)i] = db[(size_t)k];
+            }
+            s.specFc = fcNow;
+            s.specBw = rate > 0 ? rate / 1e6 : 2;
+            s.specRate = rate;
+            s.specHave = true;
+            if (s.wfInit) {
+                std::vector<float> row(s.specY.size());
+                for (size_t i = 0; i < s.specY.size(); i++) row[i] = (float)s.specY[i];
+                s.wf.offer(row, ImGui::GetTime());
+            }
+        }
+    }
+    const double fc = s.specHave ? s.specFc : fcNow;
+    const double bw = s.specHave ? s.specBw : 2;
+    if (!s.specHave) {
+        s.specX = {fc - bw / 2, fc + bw / 2};
+        s.specY = {-120, -120};
+    }
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float hs = std::max(80.f, avail.y * s.specFrac);
     if (plt::BeginPlot("##txspec", ImVec2(-1, hs), plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_OpenBottom)) {
@@ -1063,7 +1236,7 @@ void txSpectrum(App& a) {
         plt::SetupAxisLimits(plt::X1, fc - bw / 2, fc + bw / 2, plt::Cond_Always);
         plt::SetupAxisLimits(plt::Y1, -100, 5, plt::Cond_Once);
         plt::Spec ln; ln.LineColor = pal::accent(0.95f);
-        if (!db.empty()) plt::PlotLine("tx", s.specX.data(), s.specY.data(), (int)s.specX.size(), ln);
+        if (s.specHave) plt::PlotLine("tx", s.specX.data(), s.specY.data(), (int)s.specX.size(), ln);
         plt::EndPlot();
     }
     const float hf = std::max(60.f, avail.y - hs - 4 * gUi);

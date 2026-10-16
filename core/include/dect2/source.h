@@ -28,7 +28,7 @@ struct SynthConfig {
     double pace = 1.0;     // 1 = real time; below 1 the signal runs in slow motion (tests on slow machines: the receiver gets 1/pace times the time)
     bool gainModel = false; // scale the level with the LNA/VGA/amp gains (for testing AGC): 62 dB total = the nominal level
     int mode = 0;           // 0: the DVB / ATSC / DAB settings above; 8 and up: the test signal of that engine standard (see mode_synth.h)
-    int modeOpt[8] = {};    // options of that test signal; every mode says what they mean in its <mode>_gen.h
+    int modeOpt[16] = {};   // options of that test signal; every mode says what they mean in its <mode>_gen.h
     double modeVal[4] = {};
 };
 
@@ -168,9 +168,11 @@ public:
 // ---- transmit ---------------------------------------------------------------------------------------------------------------------------
 // What a transmission asks of the radio. No limit is applied by OnAir: the frequency goes to the driver as given (a hertz-sized value, a
 // terahertz one) plus offsetHz, the gain is the radio's own TX gain in dB clamped only to the scale the radio itself reports.
+// signalHz is not part of that frequency: it moves the samples, and the radio's centre stays where it is.
 struct TxTune {
     double centerHz = 0;         // the frequency the operator means; sinks do not add offsetHz into this
     double offsetHz = 0;         // added only to the frequency sent to the radio (txRadioHz). 0: no change. May be negative
+    double signalHz = 0;         // the modulated samples are mixed to this offset from the radio centre before they are sent. 0: the carrier sits on the LO, and on the radio's DC spike. May be negative. The radio frequency does not change.
     double sampleRate = 0;       // complex samples per second the radio is asked for; what it really runs is TxSink::sampleRate()
     double gainDb = 0;           // the radio's TX gain scale (DeviceInfo::txGainMinDb .. txGainMaxDb)
     double bandwidthHz = 0;      // analogue filter, 0 = automatic

@@ -1,5 +1,6 @@
 // The sample-rate choices of the app (rate_choice.h): the list per radio and mode, and the check of a typed rate.
 #include "dect2/rate_choice.h"
+#include "dect2/tx.h"
 #include "dect2/mode_tuning.h"
 #include "dect2/dvbs_rx.h"
 #include "../core/src/native_common.h"
@@ -124,6 +125,22 @@ int main() {
             CHECK(1.5e6 >= dvbsMinAutoSymbolRate(got));                            // and Auto finds it in the spectrum
             printf("  pluto %-15s DVB-S auto %.3f Msps\n", uri, got / 1e6);
         }
+    }
+    {   // a chosen transmit rate replaces the mode's own, and is still kept inside the radio's limits
+        const TxModeSpec* fm = txModeById("fm");
+        CHECK(fm != nullptr);
+        TxRequest r;
+        const TxRateLimits lim{2e6, 20e6};
+        CHECK(fm && std::fabs(txRequestRate(*fm, r, lim) - 2e6) < 1);
+        r.rateHz = 8e6;
+        CHECK(fm && std::fabs(txRequestRate(*fm, r, lim) - 8e6) < 1);
+        r.rateHz = 1e6;
+        CHECK(fm && std::fabs(txRequestRate(*fm, r, lim) - 2e6) < 1);
+        r.rateHz = 40e6;
+        CHECK(fm && std::fabs(txRequestRate(*fm, r, lim) - 20e6) < 1);
+        const TxModeSpec* t2 = txModeById("dvbt2");
+        r.rateHz = 10e6;
+        CHECK(t2 && std::fabs(txRequestRate(*t2, r, lim) - 10e6) < 1);
     }
     if (fails) { printf("%d failures\n", fails); return 1; }
     printf("rate choice ok\n");

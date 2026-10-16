@@ -657,7 +657,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[i]) == "--dab") setFamily(app, 2);
         if (std::string(argv[i]) == "--fm") setFamily(app, 5);
         if (std::string(argv[i]) == "--mode" && i + 1 < argc) { const char* id = argv[++i]; if (const SubMode* sm = subModeById(id)) setMode(app, sm->stdMode - 2, subIndexOf(id)); else if (const ModeTuning* mt = modeTuningById(id)) setFamily(app, mt->stdMode - 2); }   // dev: rtty, ft8, meshtastic, pocsag, navtex ... (the protocol entries), dvbs, dtmb, atv, dmr, drm, adsb, gnss, sonde, ais, marine, acars, inmc, aero, iridium, mesh, hdr, cdr, pager, packet, hfdig, airband, vdl2, ism, vor, ils, m17, dstar, cw, hfdl, nxdn, dpmr, tetra, psk, js8 or ale, psk or js8
-        if (std::string(argv[i]) == "--sopt" && i + 2 < argc) { const int k = atoi(argv[i + 1]); if (k >= 0 && k < 8) app.tune.synth.modeOpt[k] = atoi(argv[i + 2]); i += 2; }       // dev: option k of the mode's test signal
+        if (std::string(argv[i]) == "--sopt" && i + 2 < argc) { const int k = atoi(argv[i + 1]); if (k >= 0 && k < 16) app.tune.synth.modeOpt[k] = atoi(argv[i + 2]); i += 2; }      // dev: option k of the mode's test signal
         if (std::string(argv[i]) == "--sval" && i + 2 < argc) { const int k = atoi(argv[i + 1]); if (k >= 0 && k < 4) app.tune.synth.modeVal[k] = atof(argv[i + 2]); i += 2; }   // dev: value k of the mode's test signal
         if (std::string(argv[i]) == "--pick" && i + 1 < argc) {   // dev: pick the mode-list row named so, else the first row the search finds, as a click would
             const char* q = argv[++i];

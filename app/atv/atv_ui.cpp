@@ -559,6 +559,12 @@ void synth(App& a, bool& changed) {
         ImGui::TextDisabled("sync compression"); ImGui::SameLine(110 * gUi); ImGui::SetNextItemWidth(120 * gUi);
         float sc1 = (float)sc.modeVal[1];
         if (ImGui::SliderFloat("##tcomp", &sc1, 0, 80, "%.0f %%")) { sc.modeVal[1] = sc1; changed = true; }
+        ImGui::TextDisabled("internal"); ImGui::SameLine(110 * gUi);
+        combo("##tint", sc.modeOpt[8], {"12 Msps", "10 Msps", "16 Msps", "20 Msps"}, 120);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The picture is made at this rate, then resampled to the radio. Matching the radio (16 or 20 Msps) skips that resampling, so the copies disappear. 10 Msps is an exact half of 20 Msps and limits video to 4.5 MHz. System E stays at 24 Msps.");
+        bool a2 = sc.modeOpt[9] == 1;
+        if (ImGui::Checkbox("A2 stereo", &a2)) { sc.modeOpt[9] = a2 ? 1 : 0; changed = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Second FM carrier 242 kHz above the sound carrier, 7 dB weaker, carrying the right channel. The first carrier carries the sum, so a mono set still works. B/G and D/K. The built-in tone is centred; a microphone or a file keeps left and right.");
         ImGui::EndPopup();
     }
 }

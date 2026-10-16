@@ -493,6 +493,60 @@ static void carrierTuneChecks() {
     std::remove(path.c_str());
 }
 
+// The radio stays on the typed centre. The samples (carrier tune is DC before the shift) come out at signalHz, so a HackRF's DC spike is not on the carrier.
+static void signalOffsetChecks() {
+    const std::string path = tmpPath("sigoff");
+    std::remove(path.c_str());
+    auto sink = std::make_unique<RecSink>(path);
+    auto st = sink->st;
+    TxSession s;
+    TxRequest r;
+    r.modeId = "fm";
+    r.carrierTune = true;
+    r.loop = false;
+    r.onceSeconds = 0.05;
+    r.tune.centerHz = 92.5e6;
+    r.tune.signalHz = 200e3;
+    std::string err;
+    CHECK(s.start(std::move(sink), r, {}, err), "signal offset start: %s", err.c_str());
+    CHECK(waitUntil(30, [&] { return !s.running(); }), "signal offset finished");
+    CHECK(std::fabs(st->tune.centerHz - 92.5e6) < 1.0, "the radio centre stays 92.5 MHz: %.0f", st->tune.centerHz);
+    CHECK(std::fabs(st->tune.offsetHz) < 1.0, "signal offset does not move the LO correction: %.0f", st->tune.offsetHz);
+    const double rate = s.stats().rateHz;
+    FILE* f = fopen(path.c_str(), "rb");
+    CHECK(f, "signal offset file");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    const long bytes = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    const size_t n = (size_t)bytes / sizeof(cf32);
+    std::vector<cf32> x(n);
+    CHECK(fread(x.data(), sizeof(cf32), n, f) == n, "read shifted carrier");
+    fclose(f);
+    CHECK(n > 1000 && rate > 0, "shifted samples %zu at %.0f", n, rate);
+    double acc = 0, sumA = 0;
+    int cnt = 0;
+    const size_t skip = n / 10;
+    for (size_t i = skip; i + 1 + skip < n; i++) {
+        const cf32 d = x[i + 1] * std::conj(x[i]);
+        acc += std::atan2((double)d.imag(), (double)d.real());
+        sumA += std::sqrt((double)x[i].real() * x[i].real() + (double)x[i].imag() * x[i].imag());
+        cnt++;
+    }
+    const double hz = cnt ? (acc / cnt) * rate / (2 * 3.14159265358979323846) : 0;
+    const double meanA = cnt ? sumA / cnt : 0;
+    CHECK(std::fabs(hz - 200e3) < 20.0, "carrier at +200 kHz, not on the radio centre: %.2f Hz", hz);
+    CHECK(std::fabs(meanA - 1.0) < 0.05, "shifted carrier amplitude ~ 1: %.4f", meanA);
+    printf("  signal offset: %.1f Hz at %.3f Msps, |z| %.4f (centre stays 92.5 MHz)\n", hz, rate / 1e6, meanA);
+    std::remove(path.c_str());
+    TxRequest bad = r;
+    bad.tune.signalHz = 1.5e6;
+    bad.loop = true;
+    TxSession s2;
+    std::string e2;
+    CHECK(!s2.start(std::make_unique<RecSink>(), bad, {}, e2) && e2.find("does not fit") != std::string::npos, "an offset past the sample rate is refused: %s", e2.c_str());
+}
+
 static void payloadRoundTrips() {
     auto want = [&](const char* id) { return onlyId.empty() || onlyId == id; };
     if (!want("ft8") && !want("rtty") && !want("marine") && !want("acars") && !want("sonde")) return;
@@ -1016,6 +1070,39 @@ static void tapCarrierPeak() {
     printf("  tap peak bin %d  %.1f dB  rate %.3f Msps\n", peak, db[(size_t)peak], rate / 1e6);
 }
 
+static void tapSnapshotPause() {
+    printf("TX spectrum tap pause:\n");
+    auto sink = std::make_unique<RecSink>();
+    TxSession s;
+    s.setSpectrumTap(true);
+    TxRequest r;
+    r.modeId = "fm";
+    r.carrierTune = true;
+    r.loop = true;
+    r.tune.centerHz = 100e6;
+    std::string err;
+    CHECK(s.start(std::move(sink), r, {}, err), "snapshot start: %s", err.c_str());
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    std::vector<cf32> iq; double rate = 0;
+    s.copyTap(iq, rate);
+    CHECK(iq.empty(), "unarmed tap stays empty, got %zu", iq.size());
+    s.armSpectrumTap();
+    CHECK(waitUntil(5, [&] {
+        s.copyTap(iq, rate);
+        return iq.size() == 2048 && rate > 0;
+    }), "armed tap is one FFT window, got %zu", iq.size());
+    s.setSpectrumTap(false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    s.copyTap(iq, rate);
+    const std::vector<cf32> frozen = iq;
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    std::vector<cf32> again; double rate2 = 0;
+    s.copyTap(again, rate2);
+    CHECK(again.size() == frozen.size() && (frozen.empty() || std::memcmp(again.data(), frozen.data(), frozen.size() * sizeof(cf32)) == 0),
+          "pause keeps the same window (%zu vs %zu)", again.size(), frozen.size());
+    s.stop();
+}
+
 int main(int argc, char** argv) {
     setenv("DECT2_NOPACE", "1", 1);   // the engine plays the recordings as fast as it takes them
     std::string soapyDir, fake;
@@ -1031,7 +1118,9 @@ int main(int argc, char** argv) {
     independenceChecks();
     printf("carrier tune:\n");
     carrierTuneChecks();
+    signalOffsetChecks();
     tapCarrierPeak();
+    tapSnapshotPause();
     dvbsFileTs();
     muxOwnPids();
     analogTvLiveVideo();
