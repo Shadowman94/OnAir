@@ -136,7 +136,7 @@ Start the receiver	Запустить приёмник
 Stop the receiver	Остановить приёмник
 %s (space)	%s (пробел)
 Start the receiver first	Сначала запустите приёмник
-Stop the receiver to switch mode	Остановите приёмник, чтобы сменить режим
+Click to switch mode and restart receiver automatically	Нажмите, чтобы сменить режим; приёмник перезапустится автоматически
 Start	Старт
 Stop	Стоп
 Receiving	Приём

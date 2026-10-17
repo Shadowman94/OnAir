@@ -138,7 +138,7 @@ Start the receiver	De ontvanger starten
 Stop the receiver	De ontvanger stoppen
 %s (space)	%s (spatie)
 Start the receiver first	Start eerst de ontvanger
-Stop the receiver to switch mode	Stop de ontvanger om van modus te wisselen
+Click to switch mode and restart receiver automatically	Klik om van modus te wisselen; de ontvanger start automatisch opnieuw
 Start	Start
 Stop	Stop
 Receiving	Ontvangst

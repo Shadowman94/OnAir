@@ -138,7 +138,7 @@ Start the receiver	Uruchom odbiornik
 Stop the receiver	Zatrzymaj odbiornik
 %s (space)	%s (spacja)
 Start the receiver first	Najpierw uruchom odbiornik
-Stop the receiver to switch mode	Aby zmienić tryb, zatrzymaj odbiornik
+Click to switch mode and restart receiver automatically	Kliknij, aby zmienić tryb; odbiornik uruchomi się ponownie automatycznie
 Start	Start
 Stop	Stop
 Receiving	Odbiór

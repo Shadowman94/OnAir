@@ -474,7 +474,7 @@ std::string buildJson(const std::string& station, const std::vector<Track>& trac
         if (t.hasHdg) { snprintf(b, sizeof b, ",\"heading\":%.1f", t.hdg); j += b; }
         if (t.hasSpd) { snprintf(b, sizeof b, ",\"speed\":%.2f", t.spd); j += b; }
         if (t.hasVrate) { snprintf(b, sizeof b, ",\"vrate\":%.0f", t.vrate); j += b; }
-        if (t.hasSquawk) { snprintf(b, sizeof b, ",\"squawk\":%04d", t.squawk); j += b; }
+        if (t.hasSquawk) { snprintf(b, sizeof b, ",\"squawk\":\"%04d\"", t.squawk); j += b; }
         snprintf(b, sizeof b, ",\"age\":%.1f", t.age); j += b;
         if (!t.src.empty()) { j += ",\"src\":\""; j += jsonEsc(t.src); j += '"'; }
         if (!t.cat.empty()) { j += ",\"cat\":\""; j += jsonEsc(t.cat); j += '"'; }

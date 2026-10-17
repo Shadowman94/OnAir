@@ -145,7 +145,7 @@ Start the receiver	Démarrer le récepteur
 Stop the receiver	Arrêter le récepteur
 %s (space)	%s (espace)
 Start the receiver first	Démarrez d'abord le récepteur
-Stop the receiver to switch mode	Arrêtez le récepteur pour changer de mode
+Click to switch mode and restart receiver automatically	Cliquez pour changer de mode ; le récepteur redémarre automatiquement
 Start	Démarrer
 Stop	Arrêter
 Receiving	Réception

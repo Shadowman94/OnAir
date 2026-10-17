@@ -145,7 +145,7 @@ Start the receiver	Empfänger starten
 Stop the receiver	Empfänger stoppen
 %s (space)	%s (Leertaste)
 Start the receiver first	Zuerst den Empfänger starten
-Stop the receiver to switch mode	Zum Wechseln der Betriebsart den Empfänger stoppen
+Click to switch mode and restart receiver automatically	Klicken, um die Betriebsart zu wechseln; der Empfänger startet automatisch neu
 Start	Start
 Stop	Stopp
 Receiving	Empfang

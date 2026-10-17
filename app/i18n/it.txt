@@ -136,7 +136,7 @@ Start the receiver	Avvia il ricevitore
 Stop the receiver	Ferma il ricevitore
 %s (space)	%s (spazio)
 Start the receiver first	Avvia prima il ricevitore
-Stop the receiver to switch mode	Ferma il ricevitore per cambiare modo
+Click to switch mode and restart receiver automatically	Fai clic per cambiare modo; il ricevitore riparte automaticamente
 Start	Avvia
 Stop	Ferma
 Receiving	In ricezione

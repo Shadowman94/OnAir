@@ -145,7 +145,7 @@ Start the receiver	A vevő indítása
 Stop the receiver	A vevő leállítása
 %s (space)	%s (szóköz)
 Start the receiver first	Előbb indítsd el a vevőt
-Stop the receiver to switch mode	Az üzemmód váltásához állítsd le a vevőt
+Click to switch mode and restart receiver automatically	Kattints az üzemmód váltásához; a vevő automatikusan újraindul
 Start	Indítás
 Stop	Leállítás
 Receiving	Vétel

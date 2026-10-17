@@ -145,7 +145,7 @@ Start the receiver	启动接收机
 Stop the receiver	停止接收机
 %s (space)	%s（空格键）
 Start the receiver first	请先启动接收机
-Stop the receiver to switch mode	停止接收机后才能切换模式
+Click to switch mode and restart receiver automatically	点击切换模式，接收机将自动重启
 Start	开始
 Stop	停止
 Receiving	正在接收

@@ -145,7 +145,7 @@ Start the receiver	Paleisti imtuvą
 Stop the receiver	Stabdyti imtuvą
 %s (space)	%s (tarpo klavišas)
 Start the receiver first	Pirmiausia paleiskite imtuvą
-Stop the receiver to switch mode	Norėdami pakeisti režimą, sustabdykite imtuvą
+Click to switch mode and restart receiver automatically	Spustelėkite, kad pakeistumėte režimą; imtuvas paleidžiamas iš naujo automatiškai
 Start	Paleisti
 Stop	Stabdyti
 Receiving	Priimama

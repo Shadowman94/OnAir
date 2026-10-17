@@ -138,7 +138,7 @@ Start the receiver	受信機を開始
 Stop the receiver	受信機を停止
 %s (space)	%s (スペース)
 Start the receiver first	先に受信機を開始してください
-Stop the receiver to switch mode	モードを切り替えるには受信機を停止してください
+Click to switch mode and restart receiver automatically	クリックでモードを切り替え、受信機は自動的に再起動します
 Start	開始
 Stop	停止
 Receiving	受信中
