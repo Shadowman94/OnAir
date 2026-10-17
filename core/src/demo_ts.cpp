@@ -285,7 +285,12 @@ struct LiveMux {
     std::vector<std::unique_ptr<VideoIn>> cams;
     ~LiveMux() { stop = true; if (th.joinable()) th.join(); }
 
+    // FFmpeg 7 made the data of the write callback const; older versions (Ubuntu 24.04 has 6.1) want it without
+#if LIBAVFORMAT_VERSION_MAJOR >= 61
     static int avioWrite(void* opaque, const uint8_t* buf, int size) {
+#else
+    static int avioWrite(void* opaque, uint8_t* buf, int size) {
+#endif
         auto* m = (LiveMux*)opaque;
         std::lock_guard<std::mutex> lk(m->mu);
         m->q.insert(m->q.end(), buf, buf + size);

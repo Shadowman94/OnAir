@@ -82,7 +82,7 @@ struct DmrTelemetry {
     uint64_t trellisOk = 0, trellisFail = 0;
     uint64_t embOk = 0, embFail = 0, embLcOk = 0, embLcFail = 0;
     uint64_t calls = 0;          // calls and messages seen
-    bool ambe = false;           // the AMBE+2 vocoder is available (built in or installed)
+    bool ambe = false;           // the AMBE+2 vocoder is available (a user-installed mbelib was found)
     std::string ambePath;
     uint64_t voiceDecoded = 0;   // voice bursts (3 vocoder frames each) of the followed time slot that went through the vocoder
     int audioSlot = 0;           // time slot (1 or 2) being played, 0 none

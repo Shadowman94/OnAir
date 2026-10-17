@@ -11,11 +11,17 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
 #include <thread>
 #include <unistd.h>
+#ifdef _WIN32
+// Windows has no setenv / unsetenv: _putenv_s, where an empty value removes the variable
+static int setenv(const char* n, const char* v, int) { return _putenv_s(n, v); }
+static int unsetenv(const char* n) { return _putenv_s(n, ""); }
+#endif
 
 using namespace dect2;
 using namespace dect2::native;
@@ -187,7 +193,7 @@ static std::vector<uint8_t> makeImage(uint32_t words, uint32_t addr, uint32_t en
     return v;
 }
 static std::string writeTemp(const std::vector<uint8_t>& v, const char* name) {
-    const std::string p = std::string("/tmp/") + name + "_" + std::to_string(getpid()) + ".img";
+    const std::string p = (std::filesystem::temp_directory_path() / (std::string(name) + "_" + std::to_string(getpid()) + ".img")).string();
     std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(v.data()), (std::streamsize)v.size());
     return p;
 }

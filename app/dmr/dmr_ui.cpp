@@ -245,8 +245,8 @@ void tab(App& a) {
         ImGui::PushStyleColor(ImGuiCol_Text, mbe ? pal::okGreen() : pal::warnAmber());
         ImGui::PushTextWrapPos(0);
         ImGui::TextUnformatted(mbe
-            ? "Voice is decoded: AMBE+2 through mbelib (built in, or a copy you installed). Follow a slot to hear it."
-            : "Voice is not decoded: DMR uses AMBE+2. Install mbelib (see ?) or rebuild OnAir with the bundled vocoder. Calls are still found and logged.");
+            ? "Voice is decoded: AMBE+2 through the mbelib you installed. Follow a slot to hear it."
+            : "Voice is not decoded: DMR uses AMBE+2. Install mbelib (see ?). Calls are still found and logged.");
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
     }

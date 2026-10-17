@@ -1,4 +1,4 @@
-// DMR voice: the three AMBE+2 frames of a voice burst reach the vocoder (third_party/mbelib, built in) and come out as sound.
+// DMR voice: the three AMBE+2 frames of a voice burst reach the vocoder (a fake mbelib stand-in, tests/p25/fake_mbelib.c, loaded at run time) and come out as sound.
 //  1. the 216 voice bits of a burst (burstVoicePayload: the two halves either side of the sync / EMB) are split into three consecutive 72 bit frames;
 //  2. a valid AMBE+2 frame (Golay protected C0 and C1, C1 scrambled by the PN sequence of TS 102 361-1 annex B, built here from the code words) is
 //     put into a burst at the place of every one of the three frames, through the burst layout, and decodes to 160 samples that are not silence;
@@ -130,9 +130,16 @@ static void testReceiver() {
 }
 
 int main() {
-#ifndef DECT2_BUILTIN_MBE_TEST
-    setenv("DECT2_NATIVE_LIBDIR", "/nonexistent", 1);
+    {   // test hook of the loader: the library is taken from DECT2_NATIVE_LIBDIR, by the file name in DECT2_MBELIB_PATH
+        const std::string full = FAKE_MBELIB_PATH, dir = full.substr(0, full.find_last_of("/\\"));
+#ifdef _WIN32
+        _putenv_s("DECT2_NATIVE_LIBDIR", dir.c_str());
+        _putenv_s("DECT2_MBELIB_PATH", full.c_str());
+#else
+        setenv("DECT2_NATIVE_LIBDIR", dir.c_str(), 1);
+        setenv("DECT2_MBELIB_PATH", full.c_str(), 1);
 #endif
+    }
     testSplit();
     testDecode();
     testReceiver();

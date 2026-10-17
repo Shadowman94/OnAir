@@ -52,7 +52,7 @@ The **?** popup prints the full paths on your computer. A DLL must match OnAir: 
 ## mbelib (DMR, P25, NXDN, dPMR, D-STAR voice): build it yourself
 
 mbelib decodes AMBE/IMBE, which are patented in some countries (the project's own notice says so). OnAir does not ship, download or
-link to binaries of it. Source: <https://github.com/lwvmobile/mbelib>. Check your local law first.
+link to binaries of it. Upstream project: <https://github.com/szechyjs/mbelib> (a maintained fork: <https://github.com/lwvmobile/mbelib>). OnAir loads it at run time and contains none of its source. Check your local law first.
 
 **Windows (MSYS2 / MinGW).** Install MSYS2 (msys2.org), open the "MSYS2 MINGW64" shell, paste:
 

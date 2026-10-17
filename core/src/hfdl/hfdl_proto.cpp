@@ -96,8 +96,8 @@ std::vector<uint8_t> hfdlConvEncode(const std::vector<uint8_t>& bits) {
     unsigned sr = 0;
     for (uint8_t b : bits) {
         sr = ((sr << 1) | (b & 1)) & 0x7F;
+        o.push_back((uint8_t)parity(sr & 0x6D));   // 0x6D first, then 0x4F: dumphfdl's libfec (V27POLYA 0x6d, V27POLYB 0x4f), checked on air
         o.push_back((uint8_t)parity(sr & 0x4F));
-        o.push_back((uint8_t)parity(sr & 0x6D));
     }
     return o;
 }
@@ -106,7 +106,7 @@ std::vector<uint8_t> hfdlViterbi(const std::vector<float>& soft, int n) {
     // state = the last 6 input bits (newest in bit 0)
     static int out0[128], out1[128];
     static bool init = false;
-    if (!init) { for (int r = 0; r < 128; r++) { out0[r] = parity((unsigned)r & 0x4F); out1[r] = parity((unsigned)r & 0x6D); } init = true; }
+    if (!init) { for (int r = 0; r < 128; r++) { out0[r] = parity((unsigned)r & 0x6D); out1[r] = parity((unsigned)r & 0x4F); } init = true; }
     std::vector<float> m(64, -1e30f), nm(64);
     m[0] = 0;
     std::vector<uint8_t> dec((size_t)n * 64);

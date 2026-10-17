@@ -2,7 +2,6 @@
 #include "dect2/dstar_ambe.h"
 #include "dect2/dstar_proto.h"
 #include "../native_common.h"
-#include "../mbe_builtin.h"
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -26,14 +25,6 @@ const Api* scan() {
     if (const char* e = getenv("DECT2_MBELIB_PATH")) if (*e) names.push_back(e);
     if (names.empty()) names = native::codecLibNames(DECT2_MBE_STEM, DECT2_MBE_SO, DECT2_MBE_WIN);
     if (r->lib.open(names)) r->ok = r->lib.get(r->init, "mbe_initMbeParms") && r->lib.get(r->frame, "mbe_processAmbe3600x2400Frame");
-#ifdef DECT2_BUILTIN_MBE
-    if (!r->ok) {   // no mbelib installed: the copy built into OnAir
-        r->init = reinterpret_cast<decltype(r->init)>(&mbe_initMbeParms);
-        r->frame = reinterpret_cast<decltype(r->frame)>(&mbe_processAmbe3600x2400Frame);
-        r->lib.path = "built into OnAir";
-        r->ok = true;
-    }
-#endif
     return r;
 }
 

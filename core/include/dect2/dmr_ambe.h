@@ -1,8 +1,8 @@
 // DMR voice: a voice burst carries 3 AMBE+2 (3600x2450) vocoder frames of 72 bits = 60 ms of speech (ETSI TS 102 361-1 clause 9.1 and annex B; the
 // vocoder is TS 102 361-1 / -2 AMBE+2 half rate). The 216 voice bits of a burst (the two 108 bit halves either side of the sync or embedded
 // signalling, joined by dmr::burstVoicePayload) are three consecutive 72 bit frames; each frame is the same 36 dibit AMBE+2 frame as in NXDN and is
-// de-interleaved into the four code words C0..C3 of mbelib by the same table (nxdn::ambeFrame). The decoder is the one built into OnAir (or an
-// installed mbelib, docs/CODECS.md): NxdnAmbe is the AMBE+2 3600x2450 decoder.
+// de-interleaved into the four code words C0..C3 of mbelib by the same table (nxdn::ambeFrame). The decoder is a user-installed mbelib
+// loaded at run time (docs/CODECS.md): NxdnAmbe is the AMBE+2 3600x2450 decoder.
 #pragma once
 #include "dect2/dmr_fec.h"
 #include "dect2/nxdn_ambe.h"

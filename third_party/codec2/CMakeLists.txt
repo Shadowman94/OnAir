@@ -20,6 +20,12 @@ target_compile_definitions(onair_codec2 PRIVATE GIT_HASH="1.2.0")   # upstream p
 if(NOT WIN32)
   target_link_libraries(onair_codec2 PRIVATE m)
 endif()
+# Linux: the library's own calls stay inside it. Ubuntu's FFmpeg (libavcodec) links the system libcodec2.so.1.2, so that copy is already in
+# the process when OnAir loads this one; without -Bsymbolic, freedv_open() here calls the system copy's internal functions, built with another
+# layout of struct freedv, and freedv_close() then frees a garbage pointer (every engine that made a FreeDV decoder crashed on exit).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(onair_codec2 PRIVATE -Wl,-Bsymbolic)
+endif()
 # File names as upstream and the distributions have them (libcodec2.so.1.2, libcodec2.1.2.dylib, libcodec2.dll), which is what the loader looks for,
 # next to the programs of the build (docs/CODECS.md: the program's own folder is searched first).
 set_target_properties(onair_codec2 PROPERTIES

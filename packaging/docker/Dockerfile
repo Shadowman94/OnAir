@@ -10,7 +10,7 @@ ARG ONAIR_VERSION=0.2.5
 ARG TARGETARCH
 
 # The release .deb: it carries its own FFmpeg and the libraries of the radios OnAir drives itself; the SoapySDR modules add the rest.
-# libfaad2: the SBR and parametric stereo of DAB+ HE-AAC stations (found at run time). mbelib and codec2 come with OnAir.
+# libfaad2: the SBR and parametric stereo of DAB+ HE-AAC stations (found at run time). codec2 comes with OnAir; mbelib does not (docs/CODECS.md).
 # fonts-wqy-microhei: Chinese for the UI (one of the fonts OnAir looks for) in 5 MB, instead of the 90 MB of Noto CJK.
 RUN set -eux; \
     apt-get update; \
