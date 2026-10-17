@@ -435,7 +435,7 @@ public:
         }
         open_ = true;
         startStream();
-        return true;
+        return waitForStreamStart(err);
     }
     void stop() override {
         stopStream();
@@ -450,9 +450,12 @@ public:
         const bool rateChange = s.sampleRate > 0 && std::fabs(s.sampleRate - requested_) > 1.0;
         if (rateChange && restartForRate()) {   // most radios change their sample rate only while not streaming
             stopStream();
-            const bool ok = open_ ? configure(s, err, false) : true;
+            if (open_ && !configure(s, err, false)) {
+                stop();   // partially applied settings must not reach a new stream
+                return false;
+            }
             startStream();
-            return ok;
+            return !open_ || waitForStreamStart(err);
         }
         return configure(s, err, true);
     }
@@ -470,6 +473,7 @@ protected:
     virtual void streamLoop() = 0;            // runs until run_ is false (or the stream fails: then the radio is opened again)
     virtual void interrupt() {}              // makes a blocking read in streamLoop() return
     virtual bool restartForRate() const { return true; }
+    virtual bool waitForStreamStart(std::string&) { return true; }
     // whether a failed openDevice() is worth trying again (start() only; after an unplug every attempt is)
     virtual bool openRetryable(const std::string& err) const {
         if (openFailure_ == OpenFailure::Retry) return true;

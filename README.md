@@ -8,11 +8,13 @@ Free and open source, for macOS, Windows, Linux and Android.</p>
 <p align="center">
   <a href="https://github.com/adswill/OnAir/releases/latest"><img src="https://img.shields.io/github/v/release/adswill/OnAir?label=download&color=2ea44f" alt="Latest release"></a>
   <a href="https://github.com/adswill/OnAir/releases"><img src="https://img.shields.io/github/downloads/adswill/OnAir/total?color=blue" alt="Downloads"></a>
+  <a href="https://github.com/adswill/OnAir/stargazers"><img src="https://img.shields.io/github/stars/adswill/OnAir?style=flat&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/adswill/OnAir/actions/workflows/ci.yml"><img src="https://github.com/adswill/OnAir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://app.codacy.com/gh/adswill/OnAir/dashboard?branch=0.2.7"><img src="https://img.shields.io/badge/code%20quality-A-brightgreen?logo=codacy" alt="Code quality: Codacy grade A"></a> <!-- the A is for the 0.2.7 branch; swap for the dynamic badge: Codacy > Repository settings > General > Badges (Markdown) -->
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android-lightgrey" alt="Platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-orange" alt="License: GPL-3.0"></a>
   <a href="https://on-air.dev"><img src="https://img.shields.io/badge/website-on--air.dev-1b232b" alt="Website"></a>
   <a href="https://discord.gg/Kky9c6atm"><img src="https://img.shields.io/badge/chat-Discord-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://ko-fi.com/adswill"><img src="https://img.shields.io/badge/%E2%9D%A4-Donate-FF5E5B" alt="Donate"></a>
 </p>
 
 <p align="center">
@@ -26,26 +28,39 @@ Free and open source, for macOS, Windows, Linux and Android.</p>
   <a href="https://github.com/adswill/OnAir-channels"><b>Channel list</b></a>
 </p>
 
+<p align="center"><a href="https://ko-fi.com/adswill"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support OnAir on Ko-fi" height="36"></a></p>
+
 ---
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center" width="33%"><a href="docs/img/main.jpg"><img src="docs/img/main.jpg" width="300" alt="Spectrum, waterfall and DVB-T constellations"></a><br><sub>Spectrum, waterfall and DVB-T constellations</sub></td>
+<td align="center" width="33%"><a href="docs/img/adsb.jpg"><img src="docs/img/adsb.jpg" width="300" alt="ADS-B aircraft map"></a><br><sub>ADS-B aircraft map</sub></td>
+<td align="center" width="33%"><a href="docs/img/dab.jpg"><img src="docs/img/dab.jpg" width="300" alt="DAB+ ensemble"></a><br><sub>DAB+ ensemble</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="docs/img/fm.jpg"><img src="docs/img/fm.jpg" width="300" alt="FM with RDS and Listen"></a><br><sub>FM with RDS and Listen</sub></td>
+<td align="center" width="33%"><a href="docs/img/ais.jpg"><img src="docs/img/ais.jpg" width="300" alt="AIS ships on the map"></a><br><sub>AIS ships on the map</sub></td>
+</tr>
+</table>
+
+<sub>Screenshots use the built-in test signals and demo data, so no radio is shown. Click one to enlarge.</sub>
+
+</div>
 
 OnAir turns a low-cost SDR (a HackRF, an RTL-SDR, an Airspy and many other radios) into a receiver for most of what is on the air. Plug in an antenna, pick a mode, and watch what happens inside: the spectrum, the sync, the error correction and the decoded data. It is built for people who want a receiver that is both easy to use and honest about what is happening inside it.
 
 OnAir is a receiver first. It can also send test signals through a transmit-capable radio into a dummy load or a shielded setup (off by default, behind a licence notice, see [Transmit](#transmit)).
 
-## Highlights
-
-- **Television:** DVB-T/T2, DVB-S/S2/S2X, DVB-C, ATSC 1.0 and 3.0, ISDB-T, DTMB, analogue TV and MAC, with a live player (picture, sound, subtitles, teletext, programme guide), recording, pause and live buffer, and 2-3 adjacent channels from one wide capture.
-- **Radio:** DAB+, DRM (with its data services), HD Radio, CDR, and FM with RDS, a Mono switch for weak stations and a saved-station library.
-- **Aircraft, ships, satellites:** ADS-B with a live map, ACARS, VDL2, HFDL, UAT, AIS, weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, GNSS and more.
-- **Two-way radio, pagers, HF data, IoT:** DMR, P25, NXDN, dPMR, D-STAR, M17, TETRA, POCSAG/FLEX, FT8/WSPR, RTTY, SSTV, LoRa, Meshtastic, Bluetooth LE, Wi-Fi, cell towers and more.
-- **Tools:** spectrum analyser and explorer, a signal workbench for recordings, a gain optimiser, a direction finder, a pass planner, a remote-control API.
-- **Many radios:** HackRF, RTL-SDR, Airspy, SDRplay, BladeRF, LimeSDR, USRP, Pluto, Fobos, RX888, RFNM, network radios, sound cards and Hamlib rigs.
-
-New here? Press **Tour** in the app: a little TV walks you through OnAir with a built-in demo signal, so you can explore everything before you buy a radio.
+> [!TIP]
+> New here? Press **Tour** in the app: a little TV walks you through OnAir with a built-in demo signal, so you can explore everything before you buy a radio.
 
 ## Contents
 
-- [What is new in 0.2.6](#what-is-new-in-026)
+- [What it does](#what-it-does)
+- [What is new in 0.2.6](#what-is-new-in-026) · [New in 0.2.7 (beta)](#new-in-027-beta-available-now-httpsgithubcomadswillonairreleases)
 - [Install](#install) · [Android app](#android-app) · [Development version](#development-version-nightly)
 - [Quick start](#quick-start)
 - [Modes](#modes) · [Tools and notes](#tools-and-notes)
@@ -54,11 +69,34 @@ New here? Press **Tour** in the app: a little TV walks you through OnAir with a 
 - [Transmit](#transmit)
 - [Remote-control API](#remote-control-api)
 - [Updates](#updates) · [Discord status](#discord-status)
-- [Good to know](#good-to-know)
+- [Good to know](#good-to-know) · [Troubleshooting](#troubleshooting)
 - [Build from source](#build-from-source)
 - [Support and community](#support-and-community) · [License](#license)
 
+## What it does
+
+| Family | Modes | What you get |
+|---|:---:|---|
+| **TV** | 9 | DVB-T/T2, DVB-S/S2/S2X, DVB-C, ATSC 1.0 and 3.0, ISDB-T, DTMB, analogue TV and MAC, with a live player (picture, sound, subtitles, teletext, programme guide), recording, pause and live buffer, and 2-3 adjacent channels from one wide capture |
+| **Broadcast radio** | 5 | DAB+, DRM (with its data services), HD Radio, CDR, and FM with RDS, a Mono switch for weak stations and a saved-station library |
+| **Aviation** | 14 | ADS-B with a live map, UAT, ACARS, VDL2 and VDL4, HFDL, airband, VOR / ILS / NDB, FLARM, drones |
+| **Maritime** | 5 | AIS, VDES, NAVTEX, DSC, weather fax |
+| **Satellite and navigation** | 11 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS |
+| **Two-way radio** | 6 | DMR, P25, NXDN, dPMR, D-STAR, M17, TETRA, TETRAPOL |
+| **Cellular and rail** | 5 | LTE, 5G NR and NB-IoT cells, GSM-R, LBJ |
+| **Pagers** | 3 | POCSAG, FLEX, Multitone |
+| **IoT and sensors** | 12 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, Zigbee, Wi-Fi, Wi-SUN, DECT, ANT+ |
+| **Weather and science** | 6 | Radiosondes, SAME alerts, time signals, ionospheric sounders, radio astronomy |
+| **Amateur** | 27 | FT8, FT4, WSPR, JS8Call, RTTY, PSK, SSTV, FreeDV, APRS, LoRa APRS, MeshCom and more |
+| **HF utility** | 4 | ALE, beacons, Datawell buoys, CODAR |
+| **Tools** | 4 | General receiver, spectrum analyser, spectrum explorer, signal workbench; also a gain optimiser, a direction finder, a pass planner and a remote-control API |
+
+**Many radios:** HackRF, RTL-SDR, Airspy, SDRplay, BladeRF, LimeSDR, USRP, Pluto, Fobos, RX888, RFNM, network radios, sound cards and Hamlib rigs. The mode counts are the rows of the mode list in the app. Details per mode are under [Modes](#modes).
+
 ## What is new in 0.2.6
+
+<details>
+<summary><b>Show the 0.2.6 changes</b></summary>
 
 - **[Android app](#android-app):** the same decoder core with a phone interface (receive only).
 - **Hamlib rig control and rotators:** drive CAT radios such as an Icom IC-R8600 or IC-7300 (frequency and mode follow in both directions), and aim an antenna rotator.
@@ -76,6 +114,27 @@ New here? Press **Tour** in the app: a little TV walks you through OnAir with a 
 - **Interface:** Light and High contrast themes, an accent colour, colour maps and scroll-back for the spectrum, a General receiver with up to 4 channels and MP3 / FLAC recording, a "Save bug report" zip, translations (German, French, Spanish, Chinese, Lithuanian, Hungarian, Japanese, Polish, Dutch, Portuguese, Italian, Russian).
 - **Docker image** that shows the OnAir GUI in a browser, published with each release.
 - **mbelib is no longer included** (patented AMBE/IMBE vocoders): see [Good to know](#good-to-know).
+</details>
+
+## New in 0.2.7 (beta available now: https://github.com/adswill/OnAir/releases)
+
+> [!NOTE]
+> These are **not part of this release**. They are in the 0.2.7 beta, which you can download from the [releases page](https://github.com/adswill/OnAir/releases) (look for the pre-release). Expect rough edges.
+
+<details>
+<summary><b>Show what the 0.2.7 beta adds</b></summary>
+
+<p align="center"><a href="docs/img/touch.jpg"><img src="docs/img/touch.jpg" width="300" alt="Touch interface (0.2.7 beta)"></a></p>
+
+- **Touch interface** for tablets and touch screens (large targets, a bottom dock, a numeric keypad for the frequency).
+- **Memories** (stored frequencies with mode, gains and options), a **frequency database**, **band plans** and a **fast scanner**.
+- **Record audio** in the Source panel (WAV, FLAC or MP3, optionally only while there is sound).
+- **Neural noise remover** for speech in the General receiver and Airband (off by default).
+- **GNSS satellite map** and an **ACARS log**.
+- **More radios:** LimeSDR Mini, SDRplay nRSP-ST (experimental), external reference clocks on LimeSDR and USRP, Ham It Down.
+- **Wi-Fi HaLow** at all channel widths.
+- A mirror option for the update check where GitHub is slow or blocked, and a fuller transmit panel.
+</details>
 
 ## Install
 
@@ -89,11 +148,16 @@ Download the file for your system from the **[latest release](https://github.com
 | **Android** 9+, arm64 | `OnAir-…-android.apk` | Sideload the APK, see [Android app](#android-app). |
 | **Docker** (a server without a screen, used from a browser) | `packaging/docker` in this repository | `docker compose up -d --build` in that folder, then open `https://<server>:3001`. See [packaging/docker/README.md](packaging/docker/README.md) for radios, graphics chips and settings. |
 
-**SDRplay RSPs (RSP1, RSP1A, RSP1B, RSP2, RSPduo, RSPdx):** install the free **SDRplay API** from [sdrplay.com/api](https://www.sdrplay.com/api/) once, and restart OnAir. It is SDRplay's own driver and service, and its licence does not allow other programs to ship it, so OnAir cannot include it. Make sure the "SDRplay API Service" is running (it is started by the installer). An RSP-compatible radio that is not made by SDRplay (for example a Mirics MSi2500 "RSP1A clone") is not seen by the SDRplay API; use SoapySDR's `mirisdr` module for it instead. The RSPs deliver up to 10 MHz of bandwidth (10.66 Msps).
+> [!NOTE]
+> **SDRplay RSPs (RSP1, RSP1A, RSP1B, RSP2, RSPduo, RSPdx):** install the free **[SDRplay Hardware API](https://sdrplay.com/hardware-api/)** once, separately from SDRconnect, and restart OnAir. OnAir loads SDRplay's own library and service; it does not bundle them. Make sure the "SDRplay API Service" is running (the installer starts it). For the RSPduo, select the input with the antenna: **Tuner 1**, **Tuner 2**, or **Tuner 1 Hi-Z**. OnAir uses one tuner at a time, at 62.5 kS/s to 10 MS/s; see [tested features and limits](DEVICES.md#sdrplay-rspduo). An RSP-compatible radio not made by SDRplay (for example a Mirics MSi2500 "RSP1A clone") is not seen by the SDRplay API; use SoapySDR's `mirisdr` module instead.
 
-**Windows USB drivers:** for a HackRF, RTL-SDR, Airspy, Airspy HF+, Fobos SDR or RX888 MkII (its boot loader 04b4:00f3 and its running firmware 04b4:00f1 both need it), install the WinUSB driver once with [Zadig](https://zadig.akeo.ie). A LimeSDR Mini needs FTDI's FT60x driver (see the README inside the download). A LimeSDR-USB (Cypress FX3) needs the Cypress/LimeSuite USB driver (CyUSB3, the one LimeGUI installs), not WinUSB: do not replace it with Zadig. OnAir's own LimeSuite has no FX3 support, so for a LimeSDR-USB also install [PothosSDR](https://downloads.myriadrf.org/builds/PothosSDR/) or LimeSuite; OnAir finds its LimeSuite.dll by itself and the log (onair.log) says which copy saw the radio ("LimeSuite ...: N radio(s)").
+> [!IMPORTANT]
+> **Windows USB drivers:** for a HackRF, RTL-SDR, Airspy, Airspy HF+, Fobos SDR or RX888 MkII (its boot loader 04b4:00f3 and its running firmware 04b4:00f1 both need it), install the WinUSB driver once with [Zadig](https://zadig.akeo.ie). A LimeSDR Mini needs FTDI's FT60x driver (see the README inside the download). A LimeSDR-USB (Cypress FX3) needs the Cypress/LimeSuite USB driver (CyUSB3, the one LimeGUI installs), not WinUSB: do not replace it with Zadig. OnAir's own LimeSuite has no FX3 support, so for a LimeSDR-USB also install [PothosSDR](https://downloads.myriadrf.org/builds/PothosSDR/) or LimeSuite; OnAir finds its LimeSuite.dll by itself and the log (onair.log) says which copy saw the radio ("LimeSuite ...: N radio(s)").
 
 ### Android app
+
+<details>
+<summary><b>The Android app: sources, limits, how to install</b></summary>
 
 The Android app is the desktop decoder core (the same C++ code, built as `libonair.so`) with a phone interface in Kotlin Compose: spectrum and waterfall, the mode list with search and groups, a results tab with the decoded data of the selected mode, and a log.
 
@@ -103,6 +167,7 @@ The Android app is the desktop decoder core (the same C++ code, built as `libona
 - **Use it:** pick a source on the Receiver tab, a mode on the Mode tab, press play. Tap the spectrum to tune, drag to move, pinch to zoom (double tap resets).
 - **Install:** download `OnAir-…-android.apk` from the [release](https://github.com/adswill/OnAir/releases/latest), copy it to the phone, open it and allow installs from unknown sources for the app you opened it with. The APK is signed with the project's own key, not a Play Store key; updating later needs the same key.
 - **Limits:** arm64-v8a only, Android 9 (API 28) or newer. No direct USB radio support yet: use rtl_tcp (for example through a USB driver app) or SpyServer. No vocoder voice (DMR, P25, NXDN, D-STAR, TETRA), no TV video or sound, and no images yet (the satellite pictures and the SSTV / fax pictures). Wide modes (DVB, ATSC) need a fast phone.
+</details>
 
 ### Development version ("nightly")
 
@@ -121,9 +186,15 @@ Fixes and new features land on the `main` branch first, before they go into a re
 
 No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8, cf32, ci16, cu16, SigMF and two-channel WAV IQ files: the sample rate, centre frequency and format are read from SigMF and WAV files), or press **Tour**. Real recordings are in the [signal sample library](https://files.on-air.dev).
 
+> [!TIP]
+> Height and a clear view toward the transmitter matter more than anything else for TV. Watch the quality score while you move the antenna.
+
 ## Modes
 
 111 modes, grouped as in the app. Every receiver is built from the published specifications and tested on generated signals (carrier offsets, noise, echoes, clock errors) and, where recordings exist, on real captures. Reports and recordings from your own antenna help most: send them on [Discord](https://discord.gg/Kky9c6atm) or upload them to the [signal sample library](https://files.on-air.dev). Where a mode has a specific caveat it is said below. **Receive only** means nothing is transmitted, decrypted or joined.
+
+<details>
+<summary><b>All 111 modes, by family</b></summary>
 
 ### TV
 
@@ -205,6 +276,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 
 - **General receiver:** NFM, WFM, AM, USB, LSB and CW anywhere the radio tunes, up to 4 channels from one capture, filters, squelch, recording to WAV (one file per transmission), FLAC and MP3.
 - **Spectrum analyser** (1 - 6000 MHz sweeps; CSV export), **Spectrum explorer** (markers, measurements, bookmarks) and **Signal workbench** (analyse and demodulate a recording from a file, no radio needed).
+</details>
 
 ## Tools and notes
 
@@ -297,7 +369,8 @@ OnAir supports the **HackRF One and HackRF Pro** natively, and drives these radi
 | **BladeRF**, **LimeSDR** | ✅ | ✅ | |
 | **USRP** | ✅ | ✅ | On Windows, install UHD from [Ettus](https://files.ettus.com) (with its firmware images) |
 | **PlutoSDR** | ⚠️ | ✅ | Over its USB cable it streams about 4 Msps, too little for a 6 – 8 MHz channel. Library not included on macOS yet: install libiio 0.26 (Analog Devices' macOS package, or Homebrew) |
-| **Airspy R2**, **SDRplay RSP** | Should work | ✅ | SDRplay: install the SDRplay API from [sdrplay.com](https://www.sdrplay.com) first (RSP1, RSP1A, RSP1B, RSP2, RSPduo, RSPdx, RSPdx-R2) |
+| **Airspy R2**, **SDRplay RSP** | Should work | ✅ | SDRplay: install the [Hardware API](https://sdrplay.com/hardware-api/) first (RSP1, RSP1A, RSP1B, RSP2, RSPdx, RSPdx-R2) |
+| **SDRplay RSPduo** | Streaming tested at 10 MS/s; TV decoding untested | FM and RDS tested on Windows | Select Tuner 1 SMA, Tuner 2 SMA, or Tuner 1 Hi-Z; one input at a time. [Setup and validation](DEVICES.md#sdrplay-rspduo) |
 | **RTL-SDR** | ❌ | ✅ | An RTL-SDR Blog V4 works for HF on macOS too |
 | **Airspy HF+** | ❌ | Narrow channels only | Specified for HF and 60 – 260 MHz |
 | **Fobos SDR** (agile firmware) | ✅ | ✅ | Contributed, untested here. Specified for 50 MHz – 6 GHz on the RF input, HF on the HF1 / HF2 inputs. Library not included: put RigExpert's `fobos_sdr` library next to OnAir, see [DEVICES.md](DEVICES.md) |
@@ -309,12 +382,20 @@ OnAir supports the **HackRF One and HackRF Pro** natively, and drives these radi
 - A TV channel needs a radio that samples fast enough: roughly 1 million samples per second per MHz of channel width. If a radio cannot reach the rate or frequency a mode needs, OnAir says so next to the source.
 - **Any frequency.** OnAir never limits the frequency you enter, in any mode and on any radio. The ranges listed for a radio are what it is *specified* for: outside them OnAir still asks the driver and shows a note. An RTL-SDR picks the way down below 24 MHz by itself (an RTL-SDR Blog V4 upconverts HF in its library, any other dongle samples its Q input directly). Only what a driver itself refuses stays an error.
 - The radios other than the HackRF have had less real-world testing. Notes for specific radios are in **[DEVICES.md](DEVICES.md)**.
+
+<details>
+<summary><b>Sound card and Hamlib rig sources</b></summary>
+
 - **Sound card** (the radio list: **Sound card: …**, including Default input): WebSDR, a virtual audio cable, or a handheld radio's speaker/line into the computer, for HF decoders (FT8, RTTY, CW, SSB) at the capture rate (usually 48 kHz). Four mappings: I/Q stereo, USB audio, LSB audio, mono real. The frequency field is the *dial* the decoder should assume; nothing is tuned. Unverified against a real WebSDR.
 - **Hamlib rig** (source list: **Add Hamlib rig…**): a CAT-controlled radio such as an Icom IC-R8600 or IC-7300. Search the model by name or type its Hamlib number, pick the serial port OnAir finds (or `host:port` for a `rigctld` on the network), and choose a sound card for the audio or IQ. The frequency and mode follow in both directions. If the rig is unplugged or `rigctld` stops, OnAir says so and reconnects by itself. Receiving never keys the transmitter. **Rotators** are driven the same way.
+</details>
 
 ### Network radios
 
 Add them from the source list: **Add network radio…**, choose the type, type its address and press **Connect**. OnAir tries for a few seconds and says why when it gets no answer; added radios are remembered.
+
+<details>
+<summary><b>Network radio types, ports and notes</b></summary>
 
 | Type | Address | Port |
 |---|---|---|
@@ -333,6 +414,7 @@ Add them from the source list: **Add network radio…**, choose the type, type i
 - When a network radio drops, OnAir reconnects by itself, and the status bar shows the samples lost. Nothing is opened to the network by default.
 - **Share my radio** (View > Data feeds): OnAir becomes an rtl_tcp server for the radio it is running, so a second OnAir, SDR#, SDR++ or any rtl_tcp client can listen to the same signal (8-bit IQ at the radio's rate). Only this computer can connect until you tick **Let other computers connect (LAN)**; clients can change the frequency and gain only when **Allow remote control** is ticked.
 - **Data feeds** (View > Data feeds), all off until you turn one on: ADS-B SBS-1 and Beast (TCP), AIS NMEA (UDP), APRS-IS and KISS (TCP), ACARS and VDL2 JSON (UDP), GNSS NMEA RMC/GGA (UDP), Bluetooth LE JSON (UDP), LoRa / LoRaWAN / Meshtastic JSON (UDP). The TCP servers stay on this computer unless **Let other computers connect (LAN)** is ticked.
+</details>
 
 ## Transmit
 
@@ -346,6 +428,10 @@ OnAir is a receiver first, but it can also send the signal of a mode through a r
 The full list of modes offered and not offered, with the reasons, is in [docs/TRANSMIT.md](docs/TRANSMIT.md).
 
 ## Remote-control API
+
+<details>
+<summary><b>Endpoints and examples</b></summary>
+
 
 Scripts and other programs can control OnAir over HTTP and WebSocket. It is **off by default**: turn it on in **View > Data feeds > Remote control API**. It listens on `127.0.0.1` (port 8765) only; **Let other computers connect** opens it to the network and then needs a token (at least 16 characters, made for you; the app shows it and can copy it). Programs on the same computer need no token; every other address must send `Authorization: Bearer <token>` (or `?token=<token>`, which ends up in logs: prefer the header). A web page cannot drive it: no CORS headers are sent, a POST must be `Content-Type: application/json`, and a request with a foreign `Origin` is refused.
 
@@ -372,6 +458,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://192.168.1.20:8765/api/v1/status
 ```
 
 The server is `core/src/remote_api.cpp`; `tests/test_remote_api.cpp` runs a socket client against it, and against the real engine on a generated DVB-T2 signal.
+</details>
 
 ## Updates
 
@@ -388,11 +475,26 @@ Off by default. **View > Show in Discord** shows on your Discord profile that yo
 ## Good to know
 
 - Encrypted (scrambled) services cannot be decoded.
-- **mbelib is not included from 0.2.6.** DMR, P25, NXDN, dPMR and D-STAR voice is silent until you install mbelib yourself, because the AMBE / IMBE vocoders are patented. Calls, IDs and data work without it. Put the library in the codecs folder (the **?** next to the sound has an **Open codecs folder** button), then press **Look again**. Steps: **[docs/CODECS.md](docs/CODECS.md)**.
+> [!NOTE]
+> **mbelib is not included from 0.2.6.** DMR, P25, NXDN, dPMR and D-STAR voice is silent until you install mbelib yourself, because the AMBE / IMBE vocoders are patented. Calls, IDs and data work without it. Put the library in the codecs folder (the **?** next to the sound has an **Open codecs folder** button), then press **Look again**. Steps: **[docs/CODECS.md](docs/CODECS.md)**.
+
 - codec2 (FreeDV and M17 speech) comes with OnAir as a separate shared library, nothing to install. Some other voice and audio codecs are not shipped (AMBE, HDC and DRA+ are patented). **[docs/CODECS.md](docs/CODECS.md)** says how to install the ones you can, and what to use for the others; the **?** button next to the sound of each such mode says the same.
 - **Saving DRA sound.** OnAir cannot decode DRA, but it can save it. In the CDR *Radio* tab, and in the *Player* section of the TV tab for a DTMB service whose sound is DRA (or any service with MPEG audio), press **Save stream**. The raw audio goes to `audio-streams/<name>_<date>_<time>.dra` (`.mp2` for MPEG audio) in OnAir's data folder; press **Stop saving** to close the file. Play it with an FFmpeg that has DRA support (`ffplay stream.dra`, or `ffplay -f dra stream.dra` if it is not recognised); a normal FFmpeg cannot read `.dra`, while `.mp2` plays anywhere.
 - Reception depends heavily on your antenna and location. A weak or echo-filled signal is the usual cause of a broken picture; the quality score and echo detector help you improve it.
 - Receiving broadcasts is legal in most places, but laws differ. Check the rules where you live.
+
+## Troubleshooting
+
+<details>
+<summary><b>Common problems and where to look</b></summary>
+
+- **The radio is not listed.** Windows: install the WinUSB driver once with [Zadig](https://zadig.akeo.ie), see [Install](#install). SDRplay RSPs need the SDRplay API installed first. Notes per radio are in [DEVICES.md](DEVICES.md).
+- **The picture breaks up.** Use **Auto-tune** or **Optimise gain**, and move the antenna while you watch the quality score, see [Quick start](#quick-start). A weak or echo-filled signal is the usual cause.
+- **macOS will not open the app.** It is not signed with a developer certificate yet: right-click it and choose *Open* on the first launch.
+- **No voice in DMR, P25, NXDN, dPMR or D-STAR.** Install mbelib yourself, see [Good to know](#good-to-know) and [docs/CODECS.md](docs/CODECS.md).
+- **No radio at all.** Open an IQ recording through the *IQ recording file* source, or press **Tour**.
+- **Still stuck.** Press **Save bug report** (one zip with diagnostics, log and crash report) and send it on [Discord](https://discord.gg/Kky9c6atm) or in [GitHub Issues](https://github.com/adswill/OnAir/issues).
+</details>
 
 ## Build from source
 
@@ -465,13 +567,17 @@ To use a HackRF, RTL-SDR or Airspy, install the WinUSB driver once with [Zadig](
 
 ## Support and community
 
-- **[Docs](https://on-air.dev/docs/)**: the wiki, with a page per mode.
+- **[Docs](https://on-air.dev/docs/)**: the wiki, with a page per mode. The [GitHub wiki](https://github.com/adswill/OnAir/wiki) is the same text.
 - **[Discord](https://discord.gg/Kky9c6atm)**: support, feature requests, questions, and sharing what you receive.
 - **[GitHub Issues](https://github.com/adswill/OnAir/issues)**: bug reports. Attach an IQ recording of the problem: press **Record IQ** in the Source panel (or run `onair-cli --record auto --secs 10`); files go to the `recordings` folder of the app data folder, and **Show recording** opens it. With **SigMF** ticked (the default) every recording also gets a `.sigmf-meta` file, so it opens directly in [IQEngine](https://iqengine.org). **Save bug report** makes one zip with diagnostics, log and crash report.
 - **[Signal sample library](https://files.on-air.dev)**: IQ and audio recordings of real signals, shared by users and tagged by mode (for example `#dvb-t2`). Every upload is checked and reviewed before it appears; recordings of the less-tested modes are the most useful.
 - **[Pull requests](https://github.com/adswill/OnAir/pulls)** are welcome.
 
+### Buy me a coffee
+
 I'm a bit embarrassed to ask this, but here goes. OnAir is free and always will be. I build it in my spare time, along with the radios, antennas and test equipment it needs. If it's useful to you and you'd like to help, a small tip on **[Ko-fi](https://ko-fi.com/adswill)** really does help and keeps new modes coming. If you'd rather not, that's completely fine: bug reports, recordings and kind words help just as much. Thank you!
+
+<p align="center"><a href="https://ko-fi.com/adswill"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support OnAir on Ko-fi" height="36"></a></p>
 
 ## License
 
@@ -480,3 +586,4 @@ OnAir is released under the **GNU General Public License v3.0 or later**, see [L
 ---
 
 Business enquiries, press and anything that does not belong in an issue: **kristijonasvr@gmail.com**
+
