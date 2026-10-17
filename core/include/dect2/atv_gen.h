@@ -20,7 +20,7 @@
 //   modeOpt[7] 1 = no black-level setup in the 525-line systems (Japan); with SECAM instead: how the lines are identified, 0 both (the subcarrier at its rest
 //              frequency on the back porch of every line, and the 9 lines of field identification signals), 1 the back porch only, 2 the field lines only
 //   modeOpt[8] where the picture is made: 0 at 12 Msps (default), 1 at 10, 2 at 16, 3 at 20. Matching the radio (16 or 20) skips the resampling,
-//              so its images are not there. 10 Msps is an exact half of 20 and limits video to 4.5 MHz. System E stays at 24 Msps (its video is 10 MHz)
+//              so its images are not there, and the interpolator is a copy. 10 Msps is an exact half of 20 and limits video to 4.5 MHz. System E stays at 24 Msps (its video is 10 MHz)
 //   modeOpt[9] 1 = A2 stereo (Zweiton) on B/G and D/K: a second FM carrier 242.1875 kHz above the sound carrier, 7 dB weaker, carrying the right
 //              channel. The first carrier carries (left + right) / 2, so a mono set still works. The second carrier has the 117.5 Hz stereo identification
 //   modeVal[1] sync compression in percent: the sync pulses lose this share of their height

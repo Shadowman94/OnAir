@@ -1,4 +1,6 @@
 // Cameras / capture cards through FFmpeg libavdevice (v4l2, dshow). Used off macOS.
+// On Windows the list is the DirectShow video-capture category, which is where virtual cameras
+// (OBS Virtual Camera and the like) are registered. Media Foundation does not see those.
 #include "videoin_impl.h"
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -10,6 +12,9 @@ extern "C" {
 #include <cstring>
 #ifdef _WIN32
 #include <windows.h>
+#include <dshow.h>
+#include <chrono>
+#include <mutex>
 #else
 #include <dirent.h>
 #endif
@@ -29,16 +34,23 @@ bool openCam(VideoIn::Impl* I, const std::string& url, std::string& err) {
     avdevice_register_all();
     const AVInputFormat* inf = av_find_input_format(inputFmt());
     if (!inf) { err = "this build has no capture-device support (libavdevice)"; return false; }
-    AVFormatContext* fmt = nullptr;
-    AVDictionary* opt = nullptr;
-    av_dict_set(&opt, "framerate", "25", 0);
-    av_dict_set(&opt, "video_size", "640x480", 0);
-    if (avformat_open_input(&fmt, url.c_str(), inf, &opt) < 0) {
+    // A real webcam takes 640x480 at 25. A virtual camera (OBS) often only offers its own size and refuses the request,
+    // so the second try opens whatever the device is already producing.
+    auto tryOpen = [&](bool sized) -> AVFormatContext* {
+        AVDictionary* opt = nullptr;
+        av_dict_set(&opt, "rtbufsize", "10485760", 0);
+        if (sized) {
+            av_dict_set(&opt, "framerate", "25", 0);
+            av_dict_set(&opt, "video_size", "640x480", 0);
+        }
+        AVFormatContext* fmt = nullptr;
+        const int r = avformat_open_input(&fmt, url.c_str(), inf, &opt);
         av_dict_free(&opt);
-        err = "could not open this capture device";
-        return false;
-    }
-    av_dict_free(&opt);
+        return r >= 0 ? fmt : nullptr;
+    };
+    AVFormatContext* fmt = tryOpen(true);
+    if (!fmt) fmt = tryOpen(false);
+    if (!fmt) { err = "could not open this capture device"; return false; }
     if (avformat_find_stream_info(fmt, nullptr) < 0) { avformat_close_input(&fmt); err = "this capture device sent no video"; return false; }
     const int si = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (si < 0) { avformat_close_input(&fmt); err = "this capture device has no video"; return false; }
@@ -90,11 +102,69 @@ void videoInCameraStop(VideoIn::Impl* I) {
     I->backend = nullptr;
 }
 
-std::vector<VideoInputDevice> videoInListCameras() {
-    std::vector<VideoInputDevice> v;
 #ifdef _WIN32
-    v.push_back({"", "Default capture device"});
+static std::string utf8FromWide(const wchar_t* w) {
+    if (!w || !*w) return {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string s((size_t)n - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+
+// DirectShow video-capture devices, by the friendly name FFmpeg opens as video=<name>.
+// That category includes virtual cameras. Binding the moniker would start the device, so only the name is read.
+static bool enumDshow(std::vector<VideoInputDevice>& out) {
+    const HRESULT ci = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(ci) && ci != RPC_E_CHANGED_MODE) return false;
+    const bool uninit = ci == S_OK || ci == S_FALSE;
+    ICreateDevEnum* devenum = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**)&devenum);
+    if (FAILED(hr) || !devenum) { if (uninit) CoUninitialize(); return false; }
+    IEnumMoniker* en = nullptr;
+    hr = devenum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &en, 0);
+    devenum->Release();
+    if (hr != S_OK || !en) { if (uninit) CoUninitialize(); return true; }
+    IMoniker* mon = nullptr;
+    while (en->Next(1, &mon, nullptr) == S_OK) {
+        IPropertyBag* bag = nullptr;
+        if (SUCCEEDED(mon->BindToStorage(nullptr, nullptr, IID_IPropertyBag, (void**)&bag)) && bag) {
+            VARIANT name;
+            VariantInit(&name);
+            if (SUCCEEDED(bag->Read(L"FriendlyName", &name, nullptr)) && name.vt == VT_BSTR) {
+                const std::string n = utf8FromWide(name.bstrVal);
+                bool seen = n.empty();
+                for (const auto& d : out) if (d.id == n) seen = true;
+                if (!seen) out.push_back({n, n});
+            }
+            VariantClear(&name);
+            bag->Release();
+        }
+        mon->Release();
+    }
+    en->Release();
+    if (uninit) CoUninitialize();
+    return true;
+}
+#endif
+
+std::vector<VideoInputDevice> videoInListCameras() {
+#ifdef _WIN32
+    static std::mutex mu;
+    static std::vector<VideoInputDevice> cache;
+    static std::chrono::steady_clock::time_point when{};
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        if (when.time_since_epoch().count() != 0 && std::chrono::steady_clock::now() - when < std::chrono::seconds(2)) return cache;
+    }
+    std::vector<VideoInputDevice> fresh;
+    if (!enumDshow(fresh)) fresh.push_back({"", "Default capture device"});
+    std::lock_guard<std::mutex> lk(mu);
+    cache = std::move(fresh);
+    when = std::chrono::steady_clock::now();
+    return cache;
 #else
+    std::vector<VideoInputDevice> v;
     DIR* d = opendir("/dev");
     if (d) {
         while (dirent* e = readdir(d)) {
@@ -104,9 +174,9 @@ std::vector<VideoInputDevice> videoInListCameras() {
         }
         closedir(d);
     }
-#endif
     if (v.empty()) v.push_back({"", "Default capture device"});
     return v;
+#endif
 }
 
 } // namespace dect2

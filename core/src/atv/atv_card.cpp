@@ -164,8 +164,6 @@ void AtvCard::buildStatic() {
         c.rect(trackX0_ + 2, trackY0_ + 2, trackX1_ - 2, trackY1_ - 2, black);
         // the clock strip
         clockY0_ = Y(0.935); clockY1_ = Y(0.985);
-        // a white line round the picture, to see where the picture edge is
-        c.rect(0, 0, W, 3, white); c.rect(0, H - 3, W, H, white); c.rect(0, 0, 3, H, white); c.rect(W - 3, 0, W, H, white);
     }
     // the picture goes through the video band: Y to about 5 MHz, the colour differences to about 1 MHz
     for (int r = 0; r < H; r++) {

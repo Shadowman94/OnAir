@@ -2,16 +2,21 @@
 //
 //   test card (field by field) -> composite video line by line at 12 Msps, timing from the half-line grid of BT.470-6
 //   -> carrier amplitude (sync tip 100 %, white 12.5 %) -> vestigial-sideband FIR (complex taps) -> carrier at the vision frequency
-//   -> interpolation to the output rate (position stepped in double precision, so a clock error is just a different step)
-//   + FM sound carrier made at the output rate, ghost, noise.
+//   -> interpolation to the output rate (position stepped in double precision, so a clock error is just a different step;
+//      an integer ratio is a copy, because phase 0 of the kernel is an impulse)
+//   + FM sound carrier at the output rate, from a quadrature oscillator (not a sine per sample), ghost, noise.
 #include "dect2/atv_gen.h"
 #include "dect2/atv_card.h"
 #include "dect2/atv_nbtv.h"
 #include "atv_dsp.h"
 #include "dect2/dsp_compat.h"
+#include "dect2/simd.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#if defined(DECT2_X86_DISPATCH)
+#include <immintrin.h>
+#endif
 
 namespace dect2 {
 
@@ -63,6 +68,83 @@ struct Programme {
     }
 };
 
+// Phase of the 512-entry windowed-sinc kernel at a positive sample position. Phase 0 is an impulse (the other taps sit on the zeros of the sinc),
+// so the output is the input sample itself.
+inline void kernPhase(double pos, int64_t& ib, int& ph) {
+    const int64_t i0 = (int64_t)pos;
+    const double frac = pos - (double)i0;
+    ph = (int)(frac * (double)kKernPhases + 0.5);
+    ib = i0;
+    if (ph >= kKernPhases) { ph -= kKernPhases; ++ib; }
+}
+
+inline cf32 kernDot(const float* kk, const float* xs, const float* ys) {
+    float re[4] = {0, 0, 0, 0}, im[4] = {0, 0, 0, 0};
+    for (int b = 0; b < kKernTaps; b += 4)
+        for (int l = 0; l < 4; l++) { re[l] += kk[b + l] * xs[b + l]; im[l] += kk[b + l] * ys[b + l]; }
+    return cf32((re[0] + re[1]) + (re[2] + re[3]), (im[0] + im[1]) + (im[2] + im[3]));
+}
+
+void resampleScalar(cf32* dst, size_t n, double& pos, double step, const float* xr, const float* xi, int64_t base, const float* kern) {
+    constexpr int half = kKernTaps / 2 - 1;
+    for (size_t j = 0; j < n; j++) {
+        int64_t ib; int ph;
+        kernPhase(pos, ib, ph);
+        const size_t o = (size_t)(ib - base);
+        if (ph == 0) dst[j] = cf32(xr[o], xi[o]);
+        else {
+            const float* kk = kern + (size_t)ph * kKernTaps;
+            const float* xs = xr + (o - (size_t)half);
+            const float* ys = xi + (o - (size_t)half);
+            dst[j] = kernDot(kk, xs, ys);
+        }
+        pos += step;
+    }
+}
+
+#if defined(DECT2_X86_DISPATCH)
+DECT2_AVX2_TARGET float hadd256(const __m256 v) {
+    __m128 l = _mm_add_ps(_mm256_castps256_ps128(v), _mm256_extractf128_ps(v, 1));
+    l = _mm_add_ps(l, _mm_movehl_ps(l, l));
+    l = _mm_add_ss(l, _mm_shuffle_ps(l, l, 1));
+    return _mm_cvtss_f32(l);
+}
+DECT2_AVX2_TARGET float hadd128(const __m128 v0) {
+    __m128 v = v0;
+    v = _mm_add_ps(v, _mm_movehl_ps(v, v));
+    v = _mm_add_ss(v, _mm_shuffle_ps(v, v, 1));
+    return _mm_cvtss_f32(v);
+}
+DECT2_AVX2_TARGET void resampleAvx2(cf32* dst, size_t n, double& pos, double step, const float* xr, const float* xi, int64_t base, const float* kern) {
+    constexpr int half = kKernTaps / 2 - 1;
+    for (size_t j = 0; j < n; j++) {
+        int64_t ib; int ph;
+        kernPhase(pos, ib, ph);
+        const size_t o = (size_t)(ib - base);
+        if (ph == 0) dst[j] = cf32(xr[o], xi[o]);
+        else {
+            const float* kk = kern + (size_t)ph * kKernTaps;
+            const float* xs = xr + (o - (size_t)half);
+            const float* ys = xi + (o - (size_t)half);
+            const __m256 k0 = _mm256_loadu_ps(kk);
+            const __m128 k1 = _mm_loadu_ps(kk + 8);
+            const float re = hadd256(_mm256_mul_ps(k0, _mm256_loadu_ps(xs))) + hadd128(_mm_mul_ps(k1, _mm_loadu_ps(xs + 8)));
+            const float im = hadd256(_mm256_mul_ps(k0, _mm256_loadu_ps(ys))) + hadd128(_mm_mul_ps(k1, _mm_loadu_ps(ys + 8)));
+            dst[j] = cf32(re, im);
+        }
+        pos += step;
+    }
+}
+#endif
+
+void resampleAtv(cf32* dst, size_t n, double& pos, double step, const float* xr, const float* xi, int64_t base, const float* kern) {
+#if defined(DECT2_X86_DISPATCH)
+    static const bool avx = cpuHasAvx2();
+    if (avx) { resampleAvx2(dst, n, pos, step, xr, xi, base, kern); return; }
+#endif
+    resampleScalar(dst, n, pos, step, xr, xi, base, kern);
+}
+
 } // namespace
 
 struct AtvGenerator::Impl {
@@ -105,6 +187,7 @@ struct AtvGenerator::Impl {
     // resampler
     std::vector<float> kern;         // (kKernPhases + 1) x kKernTaps
     double pos = 64, step = 1;
+    int copyStride = 0;              // >= 1 when step is that integer: phase 0 of the kernel is an impulse, so the output is sample floor(pos)
     uint64_t outCount = 0;
 
     // SECAM chrominance (625 lines only): FM at baseband around the centre of the bell, anti-bell filter, up to the internal rate, mixed up.
@@ -117,50 +200,62 @@ struct AtvGenerator::Impl {
     double secPhase = 0;                             // FM phase at baseband (radians), continuous from line to line
     std::vector<float> secC0R, secC0I, secC1R, secC1I;
 
-    // sound, ghost, noise
+    // sound, ghost, noise. The carriers are quadrature oscillators: the phase is a complex multiply per sample, and the FM
+    // rotation is rebuilt from sin/cos only when the audio slope changes (every 32 samples). The chain is kept across calls,
+    // so the samples do not depend on how the caller splits the stream.
     Programme prog;
-    double sndPh = 0;                                // the sound carrier phase, radians (a running sum, reduced only where it is used)
-    double sndPh2 = 0;                               // the A2 second carrier, the same way
-    std::vector<float> sPh, sAm;
-    std::vector<double> sPhD, sR;
+    double sndR = 1, sndI = 0;
+    double fmRotR = 1, fmRotI = 0, fmDrr = 1, fmDri = 0;
+    uint64_t fmRotK = ~0ull;                         // absolute output index fmRot applies to; ~0 forces a rebuild
+    double snd2R = 1, snd2I = 0;
+    double a2RotR = 1, a2RotI = 0, a2Drr = 1, a2Dri = 0;
+    uint64_t a2RotK = ~0ull;
+    double idR = 1, idI = 0, idSr = 1, idSi = 0;     // 117.5 Hz stereo identification
+    double pilR = 1, pilI = 0, pilSr = 1, pilSi = 0; // 54.6875 kHz pilot tone
+    double pilotDt = -1;
+    uint64_t pilotK = 0;
     uint64_t audioBlock = ~0ull;
     double audioA0 = 0, audioA1 = 0, audioDt = 0;
     double audioR0 = 0, audioR1 = 0;                 // the right channel, on the same 32-sample grid, when A2 is on
     std::vector<float> livePcm, liveL, liveR;
-    size_t livePos = 0;
+    size_t liveN = 0, liveNR = 0;                    // how many 48 kHz frames have been pulled; the buffers are rings of the latest ones
     // B/G (5.5 MHz) and D/K (6.5 MHz): the two-carrier stereo of ITU-R BS.707. AM sound and the other spacings stay mono.
     bool a2On() const {
         if (!cfg.stereo || fmt.amSound) return false;
         const double s = std::fabs(fmt.soundSpacingMhz);
         return (s > 5.4 && s < 5.6) || (s > 6.4 && s < 6.6);
     }
+    // The mic / file is only read near "now" (the next block is a few dozen microseconds ahead), so a ring keeps the latest
+    // frames instead of every frame since the start. A long transmission used to grow without a bound and hitch when the vector moved.
+    static constexpr size_t kLiveCap = 8192;
     void liveLR(double t, double& L, double& R) {
         if (!cfg.pullAudio) { const double a = prog.at(t); L = R = a; return; }
         constexpr double sr = 48000.0;
+        if (liveL.size() < kLiveCap) { liveL.assign(kLiveCap, 0.f); liveR.assign(kLiveCap, 0.f); }
         const size_t want = (size_t)std::max(1.0, t * sr) + 8;
         float st[128];
-        while (liveL.size() < want) {
+        while (liveNR < want) {
             const int n = cfg.pullAudio(st, 64);
-            if (n <= 0) { liveL.push_back(0.f); liveR.push_back(0.f); break; }
-            for (int i = 0; i < n; i++) { liveL.push_back(st[2 * i]); liveR.push_back(st[2 * i + 1]); }
+            if (n <= 0) { liveL[liveNR % kLiveCap] = 0.f; liveR[liveNR % kLiveCap] = 0.f; liveNR++; break; }
+            for (int i = 0; i < n; i++) { liveL[liveNR % kLiveCap] = st[2 * i]; liveR[liveNR % kLiveCap] = st[2 * i + 1]; liveNR++; }
         }
-        const size_t i = std::min(liveL.size() - 1, (size_t)std::max(0.0, t * sr));
+        const size_t i = std::min(liveNR - 1, (size_t)std::max(0.0, t * sr));
         const double g = prog.gain(3000.0);
-        L = (double)liveL[i] * g; R = (double)liveR[i] * g;
+        L = (double)liveL[i % kLiveCap] * g; R = (double)liveR[i % kLiveCap] * g;
     }
     double liveAt(double t) {
         if (!cfg.pullAudio) return prog.at(t);
         constexpr double sr = 48000.0;
+        if (livePcm.size() < kLiveCap) livePcm.assign(kLiveCap, 0.f);
         const size_t want = (size_t)std::max(1.0, t * sr) + 8;
         float st[128];
-        while (livePcm.size() < want) {
+        while (liveN < want) {
             const int n = cfg.pullAudio(st, 64);
-            if (n <= 0) { livePcm.push_back(0.f); break; }
-            for (int i = 0; i < n; i++) livePcm.push_back(0.5f * (st[2 * i] + st[2 * i + 1]));
+            if (n <= 0) { livePcm[liveN % kLiveCap] = 0.f; liveN++; break; }
+            for (int i = 0; i < n; i++) { livePcm[liveN % kLiveCap] = 0.5f * (st[2 * i] + st[2 * i + 1]); liveN++; }
         }
-        const size_t i = std::min(livePcm.size() - 1, (size_t)std::max(0.0, t * sr));
-        const float a = livePcm[i];
-        return (double)a * prog.gain(3000.0);
+        const size_t i = std::min(liveN - 1, (size_t)std::max(0.0, t * sr));
+        return (double)livePcm[i % kLiveCap] * prog.gain(3000.0);
     }
     std::vector<float> liveY, liveU, liveV;
     std::vector<cf32> ghost;
@@ -380,10 +475,13 @@ struct AtvGenerator::Impl {
         cfg.cnrDb = c.cnrDb; cfg.cfoHz = c.cfoHz; cfg.sroPpm = c.sroPpm;
         cfg.echoDb = c.echoDb; cfg.echoDelayUs = c.echoDelayUs; cfg.echoPhaseDeg = c.echoPhaseDeg;
         cfg.syncCompression = c.syncCompression; cfg.humPct = c.humPct; cfg.humHz = c.humHz;
-        if (c.stereo != cfg.stereo) { livePcm.clear(); liveL.clear(); liveR.clear(); audioBlock = ~0ull; }
+        if (c.stereo != cfg.stereo) { liveN = 0; liveNR = 0; audioBlock = ~0ull; }
         cfg.stereo = c.stereo;
         cfg.sound = c.sound; cfg.level = c.level;
         step = kFi / cfg.rate / (1.0 + cfg.sroPpm * 1e-6);
+        const double rstep = std::round(step);
+        copyStride = (rstep >= 1.0 && std::fabs(step - rstep) <= 1e-12) ? (int)rstep : 0;
+        fmRotK = ~0ull; a2RotK = ~0ull; pilotDt = -1;   // the carrier step changed, or might have: rebuild the rotation, keep the phase
         prog.mode = cfg.sound; prog.preUs = fmt.preEmphUs;
         const size_t d = (size_t)std::max(1.0, std::round(cfg.echoDelayUs * 1e-6 * cfg.rate));
         if (cfg.echoDb > 0 && ghost.size() != d) { ghost.assign(d, cf32(0, 0)); ghostPos = 0; }
@@ -507,7 +605,8 @@ struct AtvGenerator::Impl {
             const float pxPerUs = (float)(W / F.activeUs), advPx = (float)(F.chromaDelayNs * 1e-3 * pxPerUs);
             const float setup = (float)F.setup, sc = 1.f - setup;
             const int row = 2 * k + fld;
-            const bool mb = card->inMultiburst(row);
+            // The multiburst is part of the test card. A camera or a file already fills these rows, so the sine packets are not drawn over it.
+            const bool mb = !cfg.pullVideo && card->inMultiburst(row);
             if (!mb) {
                 PicTab& T = picTab[(size_t)rem];
                 if (!T.built) buildPicTab(T, u0, dtUs, aStart, aEnd, trB, teB, pxPerUs, advPx, W, count);
@@ -694,108 +793,135 @@ struct AtvGenerator::Impl {
 
     // The audio is evaluated every 32 output samples (on the absolute count, so the chunk size of the caller does not matter) and
     // interpolated linearly in between: a tone of 15 kHz at most changes very little in 3 us.
+    void ensureAudio(uint64_t k, double dt, bool a2) {
+        constexpr uint64_t B = 32;
+        const uint64_t kb = k / B;
+        if (kb == audioBlock && audioDt == dt) return;
+        const bool cont = kb == audioBlock + 1 && audioDt == dt;
+        if (!a2) {
+            if (cont) audioA0 = audioA1; else audioA0 = liveAt((double)(kb * B) * dt);
+            audioA1 = liveAt((double)((kb + 1) * B) * dt);
+        } else {
+            // the first carrier carries the sum, the second the right channel (ITU-R BS.707)
+            double L, R;
+            if (cont) { audioA0 = audioA1; audioR0 = audioR1; }
+            else { liveLR((double)(kb * B) * dt, L, R); audioA0 = 0.5 * (L + R); audioR0 = R; }
+            liveLR((double)((kb + 1) * B) * dt, L, R);
+            audioA1 = 0.5 * (L + R); audioR1 = R;
+        }
+        audioBlock = kb; audioDt = dt;
+    }
     void sound(cf32* out, size_t n, uint64_t k0) {
         if (cfg.sound == 3 && !cfg.pullAudio) return;
         const double dt = step / kFi;                                  // seconds of signal per output sample
         const double fSnd = atvSoundOffsetHz(fmt) + cfg.cfoHz;
-        const double dev = fmt.soundDevKhz * 1e3;
         const float amp = (float)(cfg.level * std::pow(10.0, fmt.soundRelDb / 20.0));
         double w0 = 2 * kPi * fSnd * dt;
-        w0 -= 2 * kPi * std::nearbyint(w0 / (2 * kPi));                  // the carrier step modulo a turn, so that one correction a sample is enough
-        const double dk = 2 * kPi * dev * dt;
-        constexpr uint64_t B = 32;
-        sPh.resize(n); sPhD.resize(n);
-        double ph = sndPh;
+        w0 -= 2 * kPi * std::nearbyint(w0 / (2 * kPi));                  // the carrier step modulo a turn
+        auto mul = [](double& r, double& i, double cr, double ci) {
+            const double nr = r * cr - i * ci;
+            i = r * ci + i * cr;
+            r = nr;
+        };
+        auto cis = [](double a, double& c, double& s) { c = std::cos(a); s = std::sin(a); };
+        auto ren = [](double& r, double& i) {
+            const double m = 1.0 / std::sqrt(r * r + i * i);
+            r *= m; i *= m;
+        };
         if (fmt.amSound) {
-            // AM sound (A, C, E, L): the carrier's amplitude follows the programme (half of it is half of the full depth), no pre-emphasis
-            sAm.resize(n);
-            size_t i = 0;
-            while (i < n) {
-                const uint64_t k = k0 + i, kb = k / B;
-                if (kb != audioBlock || audioDt != dt) {
-                    if (kb == audioBlock + 1 && audioDt == dt) audioA0 = audioA1; else audioA0 = liveAt((double)(kb * B) * dt);
-                    audioA1 = liveAt((double)((kb + 1) * B) * dt);
-                    audioBlock = kb; audioDt = dt;
-                }
-                const size_t m0 = (size_t)(k % B), cnt = std::min<size_t>(n - i, (size_t)B - m0);
-                const double slope = (audioA1 - audioA0) / (double)B;
-                for (size_t q = 0; q < cnt; q++) { ph += w0; sPhD[i + q] = ph; sAm[i + q] = (float)(1.0 + fmt.amDepth * (audioA0 + slope * (double)(m0 + q))); }
-                i += cnt;
-            }
-            for (size_t q = 0; q < n; q++) sPh[q] = (float)(sPhD[q] - 2 * kPi * std::nearbyint(sPhD[q] * (0.5 / kPi)));
-            sndPh = ph;
+            // AM sound (A, C, E, L): the carrier's amplitude follows the programme (half of it is half of the full depth), no pre-emphasis.
+            // sound == 2 is the unmodulated carrier, even when a microphone is connected.
             const bool carrierOnly = cfg.sound == 2;
-            for (size_t q = 0; q < n; q++) {
-                const float x = sPh[q];
-                float y = x + 1.5707963f;
-                if (y > 3.1415927f) y -= 6.2831855f;
-                const float e = amp * (carrierOnly ? 1.f : sAm[q]);
-                out[q] += cf32(sinPi(y) * e, sinPi(x) * e);
+            const double depth = fmt.amDepth;
+            double cr, ci;
+            cis(w0, cr, ci);
+            double pr = sndR, pi = sndI;
+            for (size_t j = 0; j < n; j++) {
+                const uint64_t k = k0 + j;
+                ensureAudio(k, dt, false);                 // drains the microphone even when the carrier itself is not modulated
+                double env = 1.0;
+                if (!carrierOnly) {
+                    const double slope = (audioA1 - audioA0) * (1.0 / 32.0);
+                    env = 1.0 + depth * (audioA0 + slope * (double)(k & 31));
+                }
+                mul(pr, pi, cr, ci);
+                const float e = (float)(amp * env);
+                out[j] += cf32((float)(pr * e), (float)(pi * e));
+                if ((k & 127) == 127) ren(pr, pi);
             }
+            sndR = pr; sndI = pi;
             return;
         }
-        size_t i = 0;
+        const double dk = 2 * kPi * fmt.soundDevKhz * 1e3 * dt;
         const bool a2 = a2On();
-        if (a2) sR.resize(n);
-        while (i < n) {
-            const uint64_t k = k0 + i, kb = k / B;
-            if (kb != audioBlock || audioDt != dt) {
-                const bool cont = kb == audioBlock + 1 && audioDt == dt;
-                if (!a2) {
-                    if (cont) audioA0 = audioA1; else audioA0 = liveAt((double)(kb * B) * dt);
-                    audioA1 = liveAt((double)((kb + 1) * B) * dt);
-                } else {
-                    // the first carrier carries the sum, the second the right channel (ITU-R BS.707)
-                    double L, R;
-                    if (cont) { audioA0 = audioA1; audioR0 = audioR1; }
-                    else { liveLR((double)(kb * B) * dt, L, R); audioA0 = 0.5 * (L + R); audioR0 = R; }
-                    liveLR((double)((kb + 1) * B) * dt, L, R);
-                    audioA1 = 0.5 * (L + R); audioR1 = R;
-                }
-                audioBlock = kb; audioDt = dt;
-            }
-            // up to the end of this block of 32 samples the audio is a straight line: the phase advances by a constant plus a ramp
-            const size_t m0 = (size_t)(k % B), cnt = std::min<size_t>(n - i, (size_t)B - m0);
-            const double slope = (audioA1 - audioA0) / (double)B;
-            double* pd = &sPhD[i];
-            // the carrier and the deviation, as phase; the sum is never reduced (the result must not depend on how the calls split the stream)
-            for (size_t q = 0; q < cnt; q++) { ph += w0 + dk * (audioA0 + slope * (double)(m0 + q)); pd[q] = ph; }
-            if (a2) {
-                const double slopeR = (audioR1 - audioR0) / (double)B;
-                for (size_t q = 0; q < cnt; q++) sR[i + q] = audioR0 + slopeR * (double)(m0 + q);
-            }
-            i += cnt;
+        const double ampD = (double)amp;
+        double pr = sndR, pi = sndI;
+        double rr = fmRotR, ri = fmRotI, dr = fmDrr, di = fmDri;
+        uint64_t rk = fmRotK;
+        double p2r = snd2R, p2i = snd2I;
+        double r2 = a2RotR, i2 = a2RotI, d2r = a2Drr, d2i = a2Dri;
+        uint64_t r2k = a2RotK;
+        double w2 = 0, dkP = 0, amp2 = 0;
+        double ir = idR, ii = idI, isr = idSr, isi = idSi;
+        double tr = pilR, ti = pilI, tsr = pilSr, tsi = pilSi;
+        double pdt = pilotDt;
+        uint64_t pk = pilotK;
+        if (a2) {
+            // second carrier, 15.5 lines (242.1875 kHz) above the first, 7 dB down. Its own FM is the right channel, plus the
+            // identification: 54.6875 kHz deviated by ±2.5 kHz, that tone itself amplitude-modulated 50 % at 117.5 Hz (stereo)
+            w2 = 2 * kPi * (fSnd + 242187.5) * dt;
+            w2 -= 2 * kPi * std::nearbyint(w2 / (2 * kPi));
+            dkP = 2 * kPi * 2500.0 * dt;
+            amp2 = ampD * std::pow(10.0, -7.0 / 20.0);
         }
-        // the phase into [-pi, pi]
-        for (size_t q = 0; q < n; q++) sPh[q] = (float)(sPhD[q] - 2 * kPi * std::nearbyint(sPhD[q] * (0.5 / kPi)));
-        sndPh = ph;
-        for (size_t i = 0; i < n; i++) {
-            const float x = sPh[i];
-            float y = x + 1.5707963f;
-            if (y > 3.1415927f) y -= 6.2831855f;
-            out[i] += cf32(sinPi(y) * amp, sinPi(x) * amp);             // cos and sin
+        for (size_t j = 0; j < n; j++) {
+            const uint64_t k = k0 + j;
+            if (rk != k) {
+                ensureAudio(k, dt, a2);
+                const double slope = (audioA1 - audioA0) * (1.0 / 32.0);
+                const double dphi = w0 + dk * (audioA0 + slope * (double)(k & 31));
+                cis(dphi, rr, ri);
+                cis(dk * slope, dr, di);
+            }
+            mul(pr, pi, rr, ri);
+            out[j] += cf32((float)(pr * ampD), (float)(pi * ampD));
+            mul(rr, ri, dr, di);
+            rk = k + 1;
+            if (((k + 1) & 31) == 0) rk = ~0ull;
+            if ((k & 127) == 127) ren(pr, pi);
+            if (!a2) continue;
+            if (r2k != k) {
+                const double slopeR = (audioR1 - audioR0) * (1.0 / 32.0);
+                const double dphi = w2 + dk * (audioR0 + slopeR * (double)(k & 31));
+                cis(dphi, r2, i2);
+                cis(dk * slopeR, d2r, d2i);
+            }
+            if (pdt != dt || pk != k) {
+                cis(2 * kPi * 117.5 * dt, isr, isi);
+                cis(2 * kPi * 54687.5 * dt, tsr, tsi);
+                cis(2 * kPi * 117.5 * (double)k * dt, ir, ii);
+                cis(2 * kPi * 54687.5 * (double)k * dt, tr, ti);
+                pdt = dt; pk = k;
+            }
+            mul(p2r, p2i, r2, i2);
+            const double pilot = (1.0 + 0.5 * ii) * ti;          // sin of the identification, times the pilot tone
+            const double e = dkP * pilot, e2 = e * e;
+            mul(p2r, p2i, 1.0 - 0.5 * e2, e * (1.0 - e2 * (1.0 / 6.0)));
+            out[j] += cf32((float)(p2r * amp2), (float)(p2i * amp2));
+            mul(r2, i2, d2r, d2i);
+            r2k = k + 1;
+            if (((k + 1) & 31) == 0) r2k = ~0ull;
+            mul(ir, ii, isr, isi);
+            mul(tr, ti, tsr, tsi);
+            pk = k + 1;
+            if ((k & 127) == 127) { ren(p2r, p2i); ren(ir, ii); ren(tr, ti); }
         }
+        sndR = pr; sndI = pi; fmRotR = rr; fmRotI = ri; fmDrr = dr; fmDri = di; fmRotK = rk;
         if (!a2) return;
-        // second carrier, 15.5 lines (242.1875 kHz) above the first, 7 dB down. Its own FM is the right channel, plus the
-        // identification: 54.6875 kHz deviated by ±2.5 kHz, that tone itself amplitude-modulated 50 % at 117.5 Hz (stereo)
-        double w2 = 2 * kPi * (fSnd + 242187.5) * dt;
-        w2 -= 2 * kPi * std::nearbyint(w2 / (2 * kPi));
-        const double dkP = 2 * kPi * 2500.0 * dt;
-        const float amp2 = amp * (float)std::pow(10.0, -7.0 / 20.0);
-        double ph2 = sndPh2;
-        for (size_t q = 0; q < n; q++) {
-            const double tp = (double)(k0 + q) * dt;
-            const double pilot = (1.0 + 0.5 * Programme::sinTurns(117.5 * tp)) * Programme::sinTurns(54687.5 * tp);
-            ph2 += w2 + dk * sR[q] + dkP * pilot;
-            sPhD[q] = ph2;
-        }
-        sndPh2 = ph2;
-        for (size_t q = 0; q < n; q++) {
-            const float x = (float)(sPhD[q] - 2 * kPi * std::nearbyint(sPhD[q] * (0.5 / kPi)));
-            float y = x + 1.5707963f;
-            if (y > 3.1415927f) y -= 6.2831855f;
-            out[q] += cf32(sinPi(y) * amp2, sinPi(x) * amp2);
-        }
+        snd2R = p2r; snd2I = p2i; a2RotR = r2; a2RotI = i2; a2Drr = d2r; a2Dri = d2i; a2RotK = r2k;
+        idR = ir; idI = ii; idSr = isr; idSi = isi;
+        pilR = tr; pilI = ti; pilSr = tsr; pilSi = tsi;
+        pilotDt = pdt; pilotK = pk;
     }
 
     void generate(cf32* out, size_t n) {
@@ -804,20 +930,24 @@ struct AtvGenerator::Impl {
             const size_t b = std::min<size_t>(n - done, 2048);
             const int64_t need = (int64_t)std::floor(pos + (double)b * step) + kKernTaps;
             while (xvBase + (int64_t)xr.size() < need) produce();
-            for (size_t j = 0; j < b; j++) {
-                const int64_t i0 = (int64_t)std::floor(pos);
-                int ph = (int)std::lround((pos - (double)i0) * kKernPhases);
-                int64_t ib = i0;
-                if (ph >= kKernPhases) { ph -= kKernPhases; ib++; }
-                const float* kk = &kern[(size_t)ph * kKernTaps];
-                const size_t at = (size_t)(ib - (kKernTaps / 2 - 1) - xvBase);
-                const float* xs = &xr[at];
-                const float* ys = &xi[at];
-                float re[4] = {0, 0, 0, 0}, im[4] = {0, 0, 0, 0};            // four lanes: the compiler turns this into vector code
-                for (int b = 0; b < kKernTaps; b += 4)
-                    for (int l = 0; l < 4; l++) { re[l] += kk[b + l] * xs[b + l]; im[l] += kk[b + l] * ys[b + l]; }
-                out[done + j] = cf32((re[0] + re[1]) + (re[2] + re[3]), (im[0] + im[1]) + (im[2] + im[3]));
-                pos += step;
+            // An integer step that stays on a whole sample never leaves phase 0, and that phase is an impulse: copy the sample.
+            if (copyStride && std::fabs(pos - std::round(pos)) < 1e-8) {
+                const int64_t i0 = (int64_t)(pos + 0.5);
+                const size_t at = (size_t)(i0 - xvBase);
+                cf32* d = out + done;
+                if (copyStride == 1) {
+                    const float* xs = &xr[at];
+                    const float* ys = &xi[at];
+                    for (size_t j = 0; j < b; j++) d[j] = cf32(xs[j], ys[j]);
+                } else {
+                    for (size_t j = 0; j < b; j++) {
+                        const size_t o = at + (size_t)j * (size_t)copyStride;
+                        d[j] = cf32(xr[o], xi[o]);
+                    }
+                }
+                pos += (double)b * (double)copyStride;
+            } else {
+                resampleAtv(out + done, b, pos, step, xr.data(), xi.data(), xvBase, kern.data());
             }
             sound(out + done, b, outCount);
             if (cfg.echoDb > 0 && !ghost.empty()) {

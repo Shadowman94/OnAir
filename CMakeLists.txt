@@ -244,7 +244,7 @@ else()
   if(WIN32)
     # MinGW-w64 (MSYS2): Winsock for the network outputs, iphlpapi to list the computer's addresses
     target_compile_definitions(dect2core PUBLIC _USE_MATH_DEFINES WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
-    target_link_libraries(dect2core PUBLIC ws2_32 iphlpapi shell32)
+    target_link_libraries(dect2core PUBLIC ws2_32 iphlpapi shell32 ole32 oleaut32 strmiids)
     target_link_libraries(dect2core PUBLIC dbghelp)   # minidump for the crash report
     if(DECT2_WIN_AVX2 AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|x64" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       # Windows, opt-in: the whole receiver built for AVX2 (the program checks for it at start and says so if missing); off by default, see dect2/simd.h
