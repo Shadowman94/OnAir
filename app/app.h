@@ -371,6 +371,7 @@ struct App {
     bool atvWide = false;     // analog TV: system E chosen (14 MHz channel, 10 MHz of video): the radio runs at 20 Msps
     bool reduceCpuHidden = true;   // View > Reduce CPU when hidden: no drawing while the window is minimised or hidden (decoding goes on)
     bool discordOn = false, discordFreq = true;   // View > Show in Discord (opt-in Rich Presence, discord_rpc.cpp) and its "Show the frequency"
+    bool discordStation = true, discordRt = false;   // broadcast FM: the RDS name (or the saved station name), and the RDS radio text
     bool mapSend = false, mapConsent = false;     // Server > Send data to map server (opt-in; consent once)
     bool mapDeclined = false;                     // the start-up question was answered "No, do not ask again" (the Server menu still works)
     std::string mapStationId;                     // client id for /ingest, generated once

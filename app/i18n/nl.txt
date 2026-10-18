@@ -218,7 +218,11 @@ Instrument palette	Instrumentenpalet
 Mono palette	Monopalet
 Show in Discord	Tonen in Discord
 Show the frequency	De frequentie tonen
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	Toont op je Discord-profiel dat je OnAir gebruikt, met de modus en de frequentie. De Discord-desktopapp moet draaien.
+Show the station name	De zendernaam tonen
+Show the radio text	De radiotekst tonen
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	RDS-zendernaam, of de naam die voor deze frequentie is opgeslagen. Alleen FM.
+RDS radio text, such as the song or the programme. Broadcast FM only.	RDS-radiotekst, zoals het nummer of het programma. Alleen FM.
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	Toont op je Discord-profiel dat je OnAir gebruikt, met de modus en, indien ingeschakeld, de frequentie, de FM-zendernaam en de radiotekst. De Discord-desktopapp moet draaien.
 Discord application ID not set in this build	In deze versie is geen Discord-applicatie-ID ingesteld
 Passes	Overvluchten
 Data feeds...	Datafeeds...

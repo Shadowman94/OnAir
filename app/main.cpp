@@ -9,6 +9,7 @@
 #include "dect2/crash_report.h"
 #include "discord_rpc.h"
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #if defined(__linux__)
 #include <dlfcn.h>
@@ -438,6 +439,50 @@ static bool glfwOnWayland() {
 }
 #endif
 
+// Spaces and control characters out, so a station name or a radio text is one line.
+static std::string discordOneLine(const std::string& s) {
+    std::string o;
+    bool gap = false;
+    for (unsigned char c : s) {
+        if (c <= ' ') { if (!o.empty()) gap = true; continue; }
+        if (gap) { o += ' '; gap = false; }
+        o += (char)c;
+    }
+    return o;
+}
+
+// The name to show for the tuned FM station: the live RDS programme name, or, when that has not come in, the name saved for
+// this frequency, or the name the band scan kept. A scrolling RDS name arrives 8 characters at a time; the scan keeps the whole text.
+static std::string fmDiscordStation(const App& a) {
+    if (!a.fmMode) return "";
+    const bool live = a.engine.running() && a.rx.standard == 6 && a.rx.fm.state >= 1;
+    const std::string rds = live ? discordOneLine(fmSavedTrim(a.rx.fm.psName)) : "";
+    std::string scanned;
+    double scanD = 0.05;
+    for (const auto& r : a.fmScan.results) {
+        if (!r.found) continue;
+        const double d = std::fabs(r.mhz - a.freqMhz);
+        if (d < scanD) { scanD = d; scanned = discordOneLine(fmSavedTrim(r.name)); }
+    }
+    if (!rds.empty()) {
+        if (scanned.size() > rds.size() && scanned.find(rds) != std::string::npos) return scanned;
+        return rds;
+    }
+    std::string saved;
+    double saveD = 0.05;
+    for (const auto& st : a.fmSaved) {
+        const double d = std::fabs(st.mhz - a.freqMhz);
+        if (d < saveD) { saveD = d; saved = discordOneLine(fmSavedTrim(st.name)); }
+    }
+    if (!saved.empty()) return saved;
+    return scanned;
+}
+
+static std::string fmDiscordRadio(const App& a) {
+    if (!a.fmMode || !a.engine.running() || a.rx.standard != 6 || a.rx.fm.state < 1) return "";
+    return discordOneLine(a.rx.fm.radioText);
+}
+
 static discord::Rpc* gDiscord = nullptr;   // created on first use (View > Show in Discord)
 static void discordTick(const App& a) {   // posts the wanted Rich Presence; the thread does the talking
     if (!a.discordOn || !*discord::appId()) { if (gDiscord) { discord::Presence off; gDiscord->set(off); } return; }
@@ -448,7 +493,10 @@ static void discordTick(const App& a) {   // posts the wanted Rich Presence; the
     if (kind == (int)DeviceInfo::File) p.freq = "File playback";
     else if (kind == (int)DeviceInfo::Synthetic) p.freq = "Synthetic signal";
     else if (a.discordFreq) { char b[32]; snprintf(b, sizeof b, "%.3f MHz", a.freqMhz); p.freq = b; }
+    if (a.fmMode && a.discordStation) p.station = fmDiscordStation(a);
+    if (a.fmMode && a.discordRt) p.radio = fmDiscordRadio(a);
     static discord::Presence prev; static long long start = 0;
+    // the elapsed time follows the mode and the frequency; a new song or a scrolling name does not start it again
     if (!start || prev.running != p.running || prev.mode != p.mode || prev.freq != p.freq)
         start = (long long)std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     prev = p; p.startUnix = start;

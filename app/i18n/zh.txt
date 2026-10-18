@@ -225,7 +225,11 @@ Instrument palette	仪器配色
 Mono palette	单色配色
 Show in Discord	在 Discord 中显示
 Show the frequency	显示频率
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	在你的 Discord 资料中显示正在使用 OnAir，以及模式和频率。需要运行 Discord 桌面应用。
+Show the station name	显示电台名称
+Show the radio text	显示电台文本
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	RDS 电台名称，或你为该频率保存的名称。仅调频广播。
+RDS radio text, such as the song or the programme. Broadcast FM only.	RDS 电台文本，例如歌曲或节目。仅调频广播。
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	在你的 Discord 资料中显示正在使用 OnAir 和模式；开启后还可显示频率、FM 电台名称和电台文本。需要运行 Discord 桌面应用。
 Discord application ID not set in this build	此版本未设置 Discord 应用 ID
 Passes	过境
 Data feeds...	数据推送...

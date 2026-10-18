@@ -13,14 +13,19 @@ struct Presence {
     bool running = false;       // receiver running; otherwise "Idle"
     std::string mode;           // display name of the mode
     std::string freq;           // "93.900 MHz", "File playback", ... (empty: not shown)
-    long long startUnix = 0;    // when this mode / frequency session started
-    bool operator==(const Presence& o) const { return enabled == o.enabled && running == o.running && mode == o.mode && freq == o.freq && startUnix == o.startUnix; }
+    std::string station;        // FM station name, after the frequency (empty: not shown)
+    std::string radio;          // FM radio text, after the station name (empty: not shown)
+    long long startUnix = 0;    // when this mode / frequency session started (not restarted by a new station name or radio text)
+    bool operator==(const Presence& o) const {
+        return enabled == o.enabled && running == o.running && mode == o.mode && freq == o.freq && station == o.station && radio == o.radio && startUnix == o.startUnix;
+    }
 };
 
 const char* appId();                                          // kDiscordAppId or $ONAIR_DISCORD_APP_ID; empty when not set
 std::string jsonEscape(const std::string& s);                 // the content of a JSON string literal (quotes not included)
 std::string encodeFrame(uint32_t opcode, const std::string& json);   // uint32 LE opcode, uint32 LE length, payload
 std::string handshakeJson(const std::string& clientId);
+std::string activityState(const Presence& p);   // the state line (frequency, station, radio text); empty when there is nothing to show; at most 128 characters
 std::string activityJson(const Presence& p, int pid, const std::string& nonce);   // the SET_ACTIVITY command (activity null when !enabled)
 
 class Rpc {

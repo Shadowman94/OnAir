@@ -218,7 +218,11 @@ Instrument palette	計器のパレット
 Mono palette	モノクロのパレット
 Show in Discord	Discord に表示
 Show the frequency	周波数を表示
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	OnAir を使用中であることを、モードと周波数とともに Discord のプロフィールに表示します。Discord のデスクトップアプリが起動している必要があります。
+Show the station name	局名を表示
+Show the radio text	ラジオテキストを表示
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	RDS の局名、またはこの周波数に保存した名前。FM 放送のみ。
+RDS radio text, such as the song or the programme. Broadcast FM only.	RDS のラジオテキスト（曲名や番組名など）。FM 放送のみ。
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	OnAir を使用中であることを、モードと、オンのときは周波数、FM の局名、ラジオテキストとともに Discord のプロフィールに表示します。Discord のデスクトップアプリが起動している必要があります。
 Discord application ID not set in this build	このビルドでは Discord のアプリケーション ID が設定されていません
 Passes	衛星パス
 Data feeds...	データフィード...

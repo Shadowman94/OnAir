@@ -225,7 +225,11 @@ Instrument palette	Prietaiso paletė
 Mono palette	Vienspalvė paletė
 Show in Discord	Rodyti „Discord“
 Show the frequency	Rodyti dažnį
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	Jūsų „Discord“ profilyje rodo, kad naudojate OnAir, režimą ir dažnį. Turi veikti „Discord“ darbalaukio programa.
+Show the station name	Rodyti stoties pavadinimą
+Show the radio text	Rodyti radijo tekstą
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	RDS stoties pavadinimas arba šiam dažniui įrašytas pavadinimas. Tik FM.
+RDS radio text, such as the song or the programme. Broadcast FM only.	RDS radijo tekstas, pavyzdžiui daina ar laida. Tik FM.
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	Jūsų „Discord“ profilyje rodo, kad naudojate OnAir, režimą ir, kai įjungta, dažnį, FM stoties pavadinimą ir radijo tekstą. Turi veikti „Discord“ darbalaukio programa.
 Discord application ID not set in this build	Šioje versijoje nenurodytas „Discord“ programos ID
 Passes	Praskridimai
 Data feeds...	Duomenų srautai...

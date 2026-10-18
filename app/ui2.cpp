@@ -746,12 +746,16 @@ float menuBar(App& a) {
                 if (ImGui::MenuItem(tr("Show in Discord"), nullptr, &a.discordOn)) savePrefs(a);
                 ImGui::BeginDisabled(!a.discordOn);
                 if (ImGui::MenuItem(tr("Show the frequency"), nullptr, &a.discordFreq)) savePrefs(a);
+                if (ImGui::MenuItem(tr("Show the station name"), nullptr, &a.discordStation)) savePrefs(a);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("RDS programme name, or the name saved for this frequency. Broadcast FM only."));
+                if (ImGui::MenuItem(tr("Show the radio text"), nullptr, &a.discordRt)) savePrefs(a);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("RDS radio text, such as the song or the programme. Broadcast FM only."));
                 ImGui::EndDisabled();
                 ImGui::EndDisabled();
                 ImGui::SameLine();
                 ImGui::TextDisabled("(?)");
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                    ImGui::SetTooltip("%s", tr(have ? "Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running." : "Discord application ID not set in this build"));
+                    ImGui::SetTooltip("%s", tr(have ? "Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running." : "Discord application ID not set in this build"));
             }
             ImGui::Separator();
             if (ImGui::MenuItem(tr("Passes"), nullptr, &a.passesOpen)) {}

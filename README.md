@@ -470,7 +470,7 @@ OnAir checks GitHub for a newer version a few seconds after it starts (then at m
 
 ## Discord status
 
-Off by default. **View > Show in Discord** shows on your Discord profile that you are using OnAir, the mode and (optionally, **Show the frequency**) the frequency. It needs the Discord desktop app running, talks only to it on your computer, and sends nothing else anywhere. To use your own application in a fork: set the environment variable `ONAIR_DISCORD_APP_ID` (or `kDiscordAppId` in `app/discord_rpc.cpp`) and upload the icon as a Rich Presence art asset named `onair`.
+Off by default. **View > Show in Discord** shows on your Discord profile that you are using OnAir and the mode. **Show the frequency**, **Show the station name** and **Show the radio text** each add that line; the last two are for broadcast FM (the RDS programme name, or the name saved for that frequency, and the RDS radio text). It needs the Discord desktop app running, talks only to it on your computer, and sends nothing else anywhere. To use your own application in a fork: set the environment variable `ONAIR_DISCORD_APP_ID` (or `kDiscordAppId` in `app/discord_rpc.cpp`) and upload the icon as a Rich Presence art asset named `onair`.
 
 ## Good to know
 

@@ -215,7 +215,11 @@ Instrument palette	Палитра «Прибор»
 Mono palette	Палитра «Моно»
 Show in Discord	Показывать в Discord
 Show the frequency	Показывать частоту
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	Показывает в вашем профиле Discord, что вы пользуетесь OnAir, режим и частоту. Требуется запущенное приложение Discord для компьютера.
+Show the station name	Показывать название станции
+Show the radio text	Показывать радиотекст
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	Название станции из RDS или сохранённое для этой частоты. Только FM.
+RDS radio text, such as the song or the programme. Broadcast FM only.	Радиотекст RDS, например песня или передача. Только FM.
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	Показывает в вашем профиле Discord, что вы пользуетесь OnAir, режим и, если включено, частоту, название FM-станции и радиотекст. Требуется запущенное приложение Discord для компьютера.
 Discord application ID not set in this build	ID приложения Discord не задан в этой сборке
 Passes	Пролёты
 Data feeds...	Потоки данных...

@@ -55,12 +55,54 @@ std::string encodeFrame(uint32_t op, const std::string& json) {
 
 std::string handshakeJson(const std::string& id) { return "{\"v\":1,\"client_id\":\"" + jsonEscape(id) + "\"}"; }
 
+static size_t utf8Chars(const std::string& s) {
+    size_t n = 0;
+    for (unsigned char c : s) if ((c & 0xC0) != 0x80) n++;
+    return n;
+}
+
+// Discord rejects a state longer than 128 characters. Cut on a character boundary and end with an ellipsis.
+static std::string clipState(const std::string& s) {
+    constexpr size_t kMax = 128;
+    if (utf8Chars(s) <= kMax) return s;
+    std::string o;
+    size_t n = 0;
+    for (size_t i = 0; i < s.size() && n + 1 < kMax;) {
+        const unsigned char c = (unsigned char)s[i];
+        size_t w = 1;
+        if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) w = 2;
+        else if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) w = 3;
+        else if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) w = 4;
+        else if (c >= 0x80) { i++; continue; }
+        o.append(s, i, w);
+        i += w;
+        n++;
+    }
+    while (!o.empty() && o.back() == ' ') o.pop_back();
+    o += "\u2026";
+    return o;
+}
+
+std::string activityState(const Presence& p) {
+    std::string s;
+    auto add = [&](const std::string& part) {
+        if (part.empty()) return;
+        if (!s.empty()) s += " \xC2\xB7 ";
+        s += part;
+    };
+    add(p.freq);
+    add(p.station);
+    add(p.radio);
+    return clipState(s);
+}
+
 std::string activityJson(const Presence& p, int pid, const std::string& nonce) {
     std::string j = "{\"cmd\":\"SET_ACTIVITY\",\"args\":{\"pid\":" + std::to_string(pid) + ",\"activity\":";
     if (!p.enabled) j += "null";
     else {
+        const std::string state = activityState(p);
         j += "{\"details\":\"" + jsonEscape(p.running ? "Listening to " + p.mode : std::string("Idle")) + "\"";
-        if (p.running && !p.freq.empty()) j += ",\"state\":\"" + jsonEscape(p.freq) + "\"";
+        if (p.running && !state.empty()) j += ",\"state\":\"" + jsonEscape(state) + "\"";
         if (p.running && p.startUnix > 0) j += ",\"timestamps\":{\"start\":" + std::to_string(p.startUnix) + "}";
         j += ",\"assets\":{\"large_image\":\"onair\",\"large_text\":\"OnAir\"}}";
     }

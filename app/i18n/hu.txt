@@ -224,7 +224,11 @@ Instrument palette	Műszer színséma
 Mono palette	Mono színséma
 Show in Discord	Megjelenítés a Discordon
 Show the frequency	A frekvencia megjelenítése
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	Megjeleníti a Discord-profilodon, hogy az OnAir-t használod, az üzemmódot és a frekvenciát. A Discord asztali alkalmazásnak futnia kell.
+Show the station name	Az állomásnév megjelenítése
+Show the radio text	A rádiószöveg megjelenítése
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	Az RDS állomásnév, vagy a frekvenciához mentett név. Csak műsorszóró FM.
+RDS radio text, such as the song or the programme. Broadcast FM only.	Az RDS rádiószöveg, például a dal vagy a műsor. Csak műsorszóró FM.
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	Megjeleníti a Discord-profilodon, hogy az OnAir-t használod, az üzemmódot, és ha bekapcsolod, a frekvenciát, az FM-állomás nevét és a rádiószöveget. A Discord asztali alkalmazásnak futnia kell.
 Discord application ID not set in this build	A Discord alkalmazásazonosító nincs beállítva ebben a kiadásban
 Passes	Átvonulások
 Data feeds...	Adatforrások...

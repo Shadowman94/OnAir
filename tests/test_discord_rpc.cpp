@@ -99,6 +99,14 @@ int main() {
     CHECK(j.find("\"pid\":42") != std::string::npos && j.find("\"details\":\"Idle\"") != std::string::npos && j.find("\"state\"") == std::string::npos && j.find("\"nonce\":\"7\"") != std::string::npos);
     discord::Presence q; q.enabled = true; q.running = true; q.mode = "A\"B"; q.freq = "File playback";
     CHECK(discord::activityJson(q, 1, "1").find("Listening to A\\\"B") != std::string::npos);
+    discord::Presence fm; fm.enabled = true; fm.running = true; fm.mode = "Broadcast FM"; fm.freq = "93.900 MHz"; fm.station = "A\"B"; fm.radio = "song";
+    CHECK(discord::activityState(fm) == "93.900 MHz \xC2\xB7 A\"B \xC2\xB7 song");
+    CHECK(discord::activityJson(fm, 1, "1").find("\"state\":\"93.900 MHz \xC2\xB7 A\\\"B \xC2\xB7 song\"") != std::string::npos);
+    discord::Presence nameOnly; nameOnly.enabled = true; nameOnly.running = true; nameOnly.station = "Pet\u0151fi";
+    CHECK(discord::activityState(nameOnly) == "Pet\u0151fi");
+    discord::Presence longLine; longLine.radio = std::string(200, 'x');
+    const std::string clipped = discord::activityState(longLine);
+    CHECK(clipped.size() == 130 && clipped.compare(clipped.size() - 3, 3, "\xE2\x80\xA6") == 0);
 #ifndef _WIN32
     fakeServerTest();
 #endif

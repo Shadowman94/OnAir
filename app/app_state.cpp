@@ -437,6 +437,8 @@ void loadPrefs(App& a) {
     if (d.has("reduceCpuHidden")) a.reduceCpuHidden = d.getI("reduceCpuHidden", 1) != 0;
     if (d.has("discordOn")) a.discordOn = d.getI("discordOn", 0) != 0;
     if (d.has("discordFreq")) a.discordFreq = d.getI("discordFreq", 1) != 0;
+    if (d.has("discordStation")) a.discordStation = d.getI("discordStation", 1) != 0;
+    if (d.has("discordRt")) a.discordRt = d.getI("discordRt", 0) != 0;
     if (a.rxId == 1) {
         a.mapSend = d.getI("mapSend", 0) != 0;
         a.mapConsent = d.getI("mapConsent", 0) != 0;
@@ -544,6 +546,8 @@ void savePrefs(const App& a) {
     d.setI("reduceCpuHidden", a.reduceCpuHidden ? 1 : 0);
     d.setI("discordOn", a.discordOn ? 1 : 0);
     d.setI("discordFreq", a.discordFreq ? 1 : 0);
+    d.setI("discordStation", a.discordStation ? 1 : 0);
+    d.setI("discordRt", a.discordRt ? 1 : 0);
     d.setI("mapSend", a.mapSend ? 1 : 0);
     d.setI("mapConsent", a.mapConsent ? 1 : 0);
     d.setI("mapDeclined", a.mapDeclined ? 1 : 0);

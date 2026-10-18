@@ -225,7 +225,11 @@ Instrument palette	Messgeräte-Farben
 Mono palette	Mono-Farben
 Show in Discord	In Discord anzeigen
 Show the frequency	Frequenz anzeigen
-Shows on your Discord profile that you are using OnAir, the mode and the frequency. Needs the Discord desktop app running.	Zeigt in deinem Discord-Profil, dass du OnAir nutzt, mit Betriebsart und Frequenz. Die Discord-Desktop-App muss laufen.
+Show the station name	Sendernamen anzeigen
+Show the radio text	Radiotext anzeigen
+RDS programme name, or the name saved for this frequency. Broadcast FM only.	RDS-Sendername, oder der für diese Frequenz gespeicherte Name. Nur UKW-Rundfunk.
+RDS radio text, such as the song or the programme. Broadcast FM only.	RDS-Radiotext, zum Beispiel der Titel oder die Sendung. Nur UKW-Rundfunk.
+Shows on your Discord profile that you are using OnAir, the mode and, when turned on, the frequency, the FM station name and the radio text. Needs the Discord desktop app running.	Zeigt in deinem Discord-Profil, dass du OnAir nutzt, mit Betriebsart und, wenn eingeschaltet, Frequenz, FM-Sendernamen und Radiotext. Die Discord-Desktop-App muss laufen.
 Discord application ID not set in this build	In dieser Version ist keine Discord-Anwendungs-ID gesetzt
 Passes	Überflüge
 Data feeds...	Datenfeeds...
